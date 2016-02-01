@@ -3,6 +3,7 @@ import scala.collection.mutable.ListBuffer
 import org.junit.Assert._
 import org.junit.Test
 import org.junit.Before
+import org.joda.time.{Period, DateTime, Duration}
 
 class UtilTest extends AssertionsForJUnit {
 
@@ -22,6 +23,19 @@ class UtilTest extends AssertionsForJUnit {
     assertFalse(Util.isDouble("1.4a"))
     assertFalse(Util.isDouble("abc"))
     assertFalse(Util.isDouble("a1.4"))
+  }
+
+  @Test def testPeriodicTask() {
+    val pt = new PeriodicTask(3)
+    assert(pt.checkIfItIsTimeToWakeUp(new DateTime(2016, 1, 2, 0, 2, 3)))
+    assertFalse(pt.checkIfItIsTimeToWakeUp(new DateTime(2016, 1, 2, 0, 2, 4)))
+    assertFalse(pt.checkIfItIsTimeToWakeUp(new DateTime(2016, 1, 2, 0, 2, 5)))
+    assert(pt.checkIfItIsTimeToWakeUp(new DateTime(2016, 1, 2, 0, 2, 6)))
+    assertFalse(pt.checkIfItIsTimeToWakeUp(new DateTime(2016, 1, 2, 0, 2, 7)))
+    assertFalse(pt.checkIfItIsTimeToWakeUp(new DateTime(2016, 1, 2, 0, 2, 8)))
+    assert(pt.checkIfItIsTimeToWakeUp(new DateTime(2016, 1, 2, 0, 2, 9)))
+    assert(pt.checkIfItIsTimeToWakeUp(new DateTime(2016, 1, 3, 0, 2, 9)))
+    assertFalse(pt.checkIfItIsTimeToWakeUp(new DateTime(2016, 1, 3, 0, 2, 9)))
   }
 
 }

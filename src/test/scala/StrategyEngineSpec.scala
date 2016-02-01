@@ -7,7 +7,7 @@ import org.mockito.Mockito._
 class StrategyEngineTest extends AssertionsForJUnit with MockitoSugar {
   @Test
   def testBogus() {
-assert(true)
+    assert(true)
   }
 
 }
