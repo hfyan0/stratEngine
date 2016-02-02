@@ -9,7 +9,7 @@ import org.joda.time.{Period, DateTime, Duration, LocalTime}
 
 object StrategyEngine {
 
-  def mtmPnL(asOfDate: DateTime): List[(String, String, PnLCalcRow)] = {
+  def calcMtmPnL(asOfDate: DateTime): List[(String, String, PnLCalcRow)] = {
     var return_list = List[(String, String, PnLCalcRow)]()
 
     val allSty = DBProcessor.getAllStyFromTradesTable
@@ -18,7 +18,7 @@ object StrategyEngine {
         s => s -> (DBProcessor.getAllTradesForSty(s))
           .map(tf => (tf.symbol, tf))
           .groupBy(_._1)
-          .map { case (k, v) => (k, v.map(_._2).filter(tf => asOfDate.getMillis > tf.datetime.getMillis)) }
+          .map { case (k, v) => (k, v.map(_._2).filter(tf => asOfDate.getMillis >= tf.datetime.getMillis)) }
       )).toMap
     }
 
@@ -89,113 +89,30 @@ object StrategyEngine {
         }
 
         val latestNominalPx = DBProcessor.getNominalPricesAsAt(asOfDate)
-        val pnlcalcrow_last = listpnlcalctbl.last
+        listpnlcalctbl match {
+          case Nil => Nil
+          case _ =>
+            {
+              val pnlcalcrow_last = listpnlcalctbl.last
 
-        //--------------------------------------------------
-        // Do MTM if it has outstanding position
-        //--------------------------------------------------
-        val dbrowtoinsert = {
-          if (abs(pnlcalcrow_last.cumSgndVol) > Util.EPSILON)
-            pnlcalcrow_last.copy(cumUrlzdPnL = pnlcalcrow_last.cumUrlzdPnL + (pnlcalcrow_last.cumSgndVol * (latestNominalPx.get(sym).getOrElse(pnlcalcrow_last.trdPx) - pnlcalcrow_last.trdPx)))
-          else
-            pnlcalcrow_last
+              //--------------------------------------------------
+              // Do MTM if it has outstanding position
+              //--------------------------------------------------
+              val dbrowtoinsert = {
+                if (abs(pnlcalcrow_last.cumSgndVol) > Util.EPSILON)
+                  pnlcalcrow_last.copy(cumUrlzdPnL = pnlcalcrow_last.cumUrlzdPnL + (pnlcalcrow_last.cumSgndVol * (latestNominalPx.get(sym).getOrElse(pnlcalcrow_last.trdPx) - pnlcalcrow_last.trdPx)))
+                else
+                  pnlcalcrow_last
+              }
+
+              return_list ::= (sty, sym, dbrowtoinsert)
+            }
         }
-
-        return_list ::= (sty, sym, dbrowtoinsert)
       }
     }
     return_list
 
   }
-
-  // def calcPnLAndPutInDBDeprecated {
-  //   val allSty = DBProcessor.getAllStyFromTradesTable
-  //   val mapStySymTF = (allSty.map(s => s -> (DBProcessor.getAllTradesForSty(s)).map(tf => (tf.symbol, tf)).groupBy(_._1).map { case (k, v) => (k, v.map(_._2)) })).toMap
-  //
-  //   for ((sty, mapslisttf) <- mapStySymTF) {
-  //     for ((sym, listtf) <- mapslisttf) {
-  //       var trdPxLast: Double = 0
-  //       var cumSgndVolLast: Double = 0
-  //       var cumSgndVol: Double = 0
-  //       var cumSgndNotlAdjChgSgn: Double = 0
-  //       var avgPx: Double = 0
-  //       var cumTotPnL: Double = 0
-  //       var psnClosed: Double = 0
-  //       var avgPxLast: Double = 0
-  //       var cumRlzdPnL: Double = 0
-  //
-  //       val listpnlcalctbl = listtf.map { tf =>
-  //
-  //         cumSgndVol += tf.signed_volume
-  //
-  //         if (cumSgndVolLast * cumSgndVol < Util.EPSILON) {
-  //           psnClosed = cumSgndVolLast
-  //         }
-  //         else {
-  //           if (abs(cumSgndVol) < abs(cumSgndVolLast))
-  //             psnClosed = cumSgndVolLast - cumSgndVol
-  //           else
-  //             psnClosed = 0
-  //         }
-  //
-  //         val rlzdPnL = psnClosed * (tf.trade_price - avgPxLast)
-  //         cumRlzdPnL += rlzdPnL
-  //
-  //         if (cumSgndVolLast * cumSgndVol < Util.EPSILON) {
-  //           cumSgndNotlAdjChgSgn = tf.trade_price * cumSgndVol
-  //           avgPx = tf.trade_price
-  //         }
-  //         else {
-  //           cumSgndNotlAdjChgSgn += tf.signed_notional + rlzdPnL
-  //           avgPx = cumSgndNotlAdjChgSgn / cumSgndVol
-  //
-  //         }
-  //
-  //         val prdTotPnL = cumSgndVolLast * (tf.trade_price - trdPxLast)
-  //         cumTotPnL += prdTotPnL
-  //
-  //         val cumUrlzdPnL = cumTotPnL - cumRlzdPnL
-  //
-  //         val pnlcalcrow = PnLCalcRow(
-  //           tf.trade_price,
-  //           tf.trade_volume,
-  //           tf.trade_sign,
-  //           cumSgndVol,
-  //           cumSgndNotlAdjChgSgn,
-  //           avgPx,
-  //           prdTotPnL,
-  //           cumTotPnL,
-  //           psnClosed,
-  //           rlzdPnL,
-  //           cumRlzdPnL,
-  //           cumUrlzdPnL
-  //         )
-  //
-  //         trdPxLast = tf.trade_price
-  //         cumSgndVolLast = cumSgndVol
-  //         avgPxLast = avgPx
-  //
-  //         pnlcalcrow
-  //       }
-  //
-  //       val latestNominalPx = DBProcessor.getNominalPricesAsAt(Util.getCurrentDateTime)
-  //       val pnlcalcrow_last = listpnlcalctbl.last
-  //
-  //       //--------------------------------------------------
-  //       // Do MTM if it has outstanding position
-  //       //--------------------------------------------------
-  //       val dbrowtoinsert = {
-  //         if (abs(pnlcalcrow_last.cumSgndVol) > Util.EPSILON)
-  //           pnlcalcrow_last.copy(cumUrlzdPnL = pnlcalcrow_last.cumUrlzdPnL + (pnlcalcrow_last.cumSgndVol * (latestNominalPx.get(sym).getOrElse(pnlcalcrow_last.trdPx) - pnlcalcrow_last.trdPx)))
-  //         else
-  //           pnlcalcrow_last
-  //       }
-  //
-  //       DBProcessor.insertPnLCalcRowToItrdPnLTbl(dbrowtoinsert, sty, sym)
-  //     }
-  //   }
-  //
-  // }
 
   def main(args: Array[String]) =
     {
@@ -293,19 +210,34 @@ object StrategyEngine {
           if (pt.checkIfItIsTimeToWakeUp(Util.getCurrentDateTime)) {
             //--------------------------------------------------
             // continuously calculate the latest intraday PnL
+            // then insert into PnL table and portfolio table
             //--------------------------------------------------
-            val lsPnLCalcRow = mtmPnL(Util.getCurrentDateTime)
-            lsPnLCalcRow.foreach { case (x, y, z) => DBProcessor.insertPnLCalcRowToItrdPnLTbl(x, y, z) }
+            calcMtmPnL(Util.getCurrentDateTime).foreach {
+              case (x, y, z) => {
+                DBProcessor.insertPnLCalcRowToItrdPnLTbl(x, y, z)
+                DBProcessor.insertPortfolioTbl(None, x, y, z.cumSgndVol, z.avgPx)
+              }
+            }
 
             //--------------------------------------------------
-            // TODO check whether daily PnL should be updated
+            // check whether daily PnL should be updated
             // should update for all days up till today
+            // then insert into PnL table and portfolio table
             //--------------------------------------------------
-            val dt_last_daily_pnl = DBProcessor.getLastDateTimeInDailyPnLTbl
-            if (Util.getCurrentDateTime.getMillis - dt_last_daily_pnl.getMillis > 24 * 60 * 60 * 1000) {
-              val lsDates = Util.getListOfDatesWithinRange(dt_last_daily_pnl, Util.getCurrentDateTime)
-              // lsDates.foreach(x => mtmPnL(x).foreach { case (x, y, z) => DBProcessor.insertPnLCalcRowToDailyPnLTbl(x, y, z) })
-              lsDates.foreach(x => mtmPnL(x))
+            val dt_last_daily_pnl = DBProcessor.getLastDateTimeInDailyPnLTbl.getOrElse(Config.dtStartCalcPnL)
+
+            if (Util.getCurrentDateTime.getMillis - dt_last_daily_pnl.getMillis >= 24 * 60 * 60 * 1000) {
+              val lsDatesInRange = Util.getListOfDatesWithinRange(dt_last_daily_pnl, Util.getCurrentDateTime)
+
+              lsDatesInRange.foreach(
+                dtInRng =>
+                  calcMtmPnL(dtInRng).foreach {
+                    case (x, y, z) => {
+                      DBProcessor.insertPnLCalcRowToDailyPnLTbl(Some(dtInRng), x, y, z)
+                      DBProcessor.insertPortfolioTbl(Some(dtInRng), x, y, z.cumSgndVol, z.avgPx)
+                    }
+                  }
+              )
             }
           }
 

@@ -118,11 +118,10 @@ object Util {
     }
   }
 
-def getListOfDatesWithinRange(startDT: DateTime, endDT: DateTime): List[DateTime] = {
-val numofdays = Days.daysBetween(startDT, endDT).getDays()
-(0 until numofdays).map(startDT.plusDays(_)).toList
-}
-
+  def getListOfDatesWithinRange(startDT: DateTime, endDT: DateTime): List[DateTime] = {
+    val numofdays = Days.daysBetween(startDT, endDT).getDays()
+    (0 to numofdays).map(startDT.plusDays(_)).toList
+  }
 
 }
 

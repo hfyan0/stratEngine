@@ -42,6 +42,12 @@ object DBProcessor {
       prep.executeUpdate
     }
   }
+  def deletePortfolioTable() {
+    try {
+      val prep = _conn.prepareStatement("delete from portfolios")
+      prep.executeUpdate
+    }
+  }
 
   def insertTradeFeedToDB(sTradeFeed: String) {
     try {
@@ -230,7 +236,10 @@ object DBProcessor {
     //--------------------------------------------------
     val res_sorted = results.sortWith(_._2.getMillis > _._2.getMillis).filter(_._2.getMillis <= asOfDate.getMillis)
 
-    val res_list = symbols.map(sym => res_sorted.filter(_._1 == sym).head)
+    val res_list = symbols.map(sym => res_sorted.filter(_._1 == sym) match {
+      case Nil     => (sym, new DateTime(), 0.0)
+      case x :: xs => x
+    })
     res_list.foreach(t => res_map += (t._1 -> t._3))
 
     res_map
@@ -253,8 +262,8 @@ object DBProcessor {
     }
     results
   }
-  def getLastDateTimeInDailyPnLTbl(): DateTime = {
-    var results: DateTime = Util.EPOCH
+  def getLastDateTimeInDailyPnLTbl(): Option[DateTime] = {
+    var results: Option[DateTime] = None
 
     try {
       val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
@@ -262,7 +271,7 @@ object DBProcessor {
       val rs = statement.executeQuery("select timestamp from daily_pnl order by timestamp desc limit 1")
 
       while (rs.next) {
-        results = Util.convertMySQLTSToDateTime(rs.getString("timestamp"))
+        results = Some(Util.convertMySQLTSToDateTime(rs.getString("timestamp")))
       }
     }
     results
@@ -357,17 +366,38 @@ object DBProcessor {
     }
   }
 
-  def insertPnLCalcRowToDailyPnLTbl(strategy_id: String, symbol: String, pnlcalcrow: PnLCalcRow) {
+  def insertPnLCalcRowToDailyPnLTbl(dt: Option[DateTime], strategy_id: String, symbol: String, pnlcalcrow: PnLCalcRow) {
     try {
       val prep = _conn.prepareStatement("insert into daily_pnl (timestamp,instrument_id,realized_pnl,unrealized_pnl,position,strategy_id) values (?,?,?,?,?,?)")
 
-      prep.setString(1, Util.getCurrentTimeStampStr)
+      val dtToUse = dt match {
+        case Some(dt: DateTime) => dt
+        case _                  => Util.getCurrentDateTime
+      }
+
+      prep.setString(1, Util.convertDateTimeToStr(dtToUse))
       prep.setString(2, symbol)
       prep.setDouble(3, pnlcalcrow.cumRlzdPnL)
       prep.setDouble(4, pnlcalcrow.cumUrlzdPnL)
-      // prep.setDouble(5, pnlcalcrow.cumRlzdPnL + pnlcalcrow.cumUrlzdPnL)
       prep.setDouble(5, pnlcalcrow.cumSgndVol)
       prep.setString(6, strategy_id)
+      prep.executeUpdate
+    }
+  }
+
+  def insertPortfolioTbl(dt: Option[DateTime], strategy_id: String, symbol: String, signedPos: Double, avgPx: Double) {
+    try {
+      val prep = _conn.prepareStatement("insert into portfolios (instrument_id,volume,avg_price,timestamp,strat_id) values (?,?,?,?,?)")
+
+      val dtToUse = dt match {
+        case Some(dt: DateTime) => dt
+        case _                  => Util.getCurrentDateTime
+      }
+      prep.setString(1, symbol)
+      prep.setDouble(2, signedPos)
+      prep.setDouble(3, avgPx)
+      prep.setString(4, Util.convertDateTimeToStr(dtToUse))
+      prep.setString(5, strategy_id)
       prep.executeUpdate
     }
   }
@@ -406,18 +436,6 @@ object DBProcessor {
     }
     results.toList
   }
-
-  //--------------------------------------------------
-  // mysql> desc portfolios;
-  // +---------------+-------------+------+-----+---------+-------+
-  // | Field         | Type        | Null | Key | Default | Extra |
-  // +---------------+-------------+------+-----+---------+-------+
-  // | instrument_id | varchar(45) | NO   |     | NULL    |       |
-  // | volume        | varchar(45) | NO   |     | NULL    |       |
-  // | avg_price     | varchar(45) | NO   |     | NULL    |       |
-  // | timestamp     | datetime    | YES  |     | NULL    |       |
-  // | strat_id      | varchar(10) | YES  |     | NULL    |       |
-  // +---------------+-------------+------+-----+---------+-------+
 
   def closeConn(): Unit = {
     _conn.close

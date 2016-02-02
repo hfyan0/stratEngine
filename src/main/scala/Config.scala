@@ -3,7 +3,7 @@ import java.io.IOException;
 import java.io.FileInputStream;
 import java.util.Date;
 import java.util.Properties;
-import org.joda.time.{LocalTime}
+import org.joda.time.{DateTime, LocalTime}
 
 object Config {
 
@@ -52,6 +52,7 @@ object Config {
   var pnlCalcIntvlInSec = 300
   var itrdMktDataUpdateIntvlInSec = 300
   var mtmTime: LocalTime = new LocalTime(16, 15)
+  var dtStartCalcPnL: DateTime = new DateTime(2016, 1, 1, 17, 0, 0)
 
   //--------------------------------------------------
   // JDBC
