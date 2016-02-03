@@ -207,41 +207,44 @@ object StrategyEngine {
 
         def run() {
 
-          if (pt.checkIfItIsTimeToWakeUp(Util.getCurrentDateTime)) {
-            //--------------------------------------------------
-            // continuously calculate the latest intraday PnL
-            // then insert into PnL table and portfolio table
-            //--------------------------------------------------
-            calcMtmPnL(Util.getCurrentDateTime).foreach {
-              case (x, y, z) => {
-                DBProcessor.insertPnLCalcRowToItrdPnLTbl(x, y, z)
-                DBProcessor.insertPortfolioTbl(None, x, y, z.cumSgndVol, z.avgPx)
+          while (true) {
+            if (pt.checkIfItIsTimeToWakeUp(Util.getCurrentDateTime)) {
+              //--------------------------------------------------
+              // continuously calculate the latest intraday PnL
+              // then insert into PnL table and portfolio table
+              //--------------------------------------------------
+              calcMtmPnL(Util.getCurrentDateTime).foreach {
+                case (x, y, z) => {
+                  DBProcessor.insertPnLCalcRowToItrdPnLTbl(x, y, z)
+                  DBProcessor.insertPortfolioTbl(None, x, y, z.cumSgndVol, z.avgPx)
+                }
+              }
+
+              //--------------------------------------------------
+              // check whether daily PnL should be updated
+              // should update for all days up till today
+              // then insert into PnL table and portfolio table
+              //--------------------------------------------------
+              val dt_last_daily_pnl = DBProcessor.getLastDateTimeInDailyPnLTbl.getOrElse(Config.dtStartCalcPnL)
+
+              if (Util.getCurrentDateTime.getMillis - dt_last_daily_pnl.getMillis >= 24 * 60 * 60 * 1000) {
+                val lsDatesInRange = Util.getListOfDatesWithinRange(dt_last_daily_pnl, Util.getCurrentDateTime)
+
+                lsDatesInRange.foreach(
+                  dtInRng =>
+                    calcMtmPnL(dtInRng).foreach {
+                      case (x, y, z) => {
+                        DBProcessor.insertPnLCalcRowToDailyPnLTbl(Some(dtInRng), x, y, z)
+                        DBProcessor.insertPortfolioTbl(Some(dtInRng), x, y, z.cumSgndVol, z.avgPx)
+                      }
+                    }
+                )
               }
             }
 
-            //--------------------------------------------------
-            // check whether daily PnL should be updated
-            // should update for all days up till today
-            // then insert into PnL table and portfolio table
-            //--------------------------------------------------
-            val dt_last_daily_pnl = DBProcessor.getLastDateTimeInDailyPnLTbl.getOrElse(Config.dtStartCalcPnL)
-
-            if (Util.getCurrentDateTime.getMillis - dt_last_daily_pnl.getMillis >= 24 * 60 * 60 * 1000) {
-              val lsDatesInRange = Util.getListOfDatesWithinRange(dt_last_daily_pnl, Util.getCurrentDateTime)
-
-              lsDatesInRange.foreach(
-                dtInRng =>
-                  calcMtmPnL(dtInRng).foreach {
-                    case (x, y, z) => {
-                      DBProcessor.insertPnLCalcRowToDailyPnLTbl(Some(dtInRng), x, y, z)
-                      DBProcessor.insertPortfolioTbl(Some(dtInRng), x, y, z.cumSgndVol, z.avgPx)
-                    }
-                  }
-              )
-            }
+            Thread.sleep(10)
           }
 
-          Thread.sleep(Config.pnlCalcIntvlInSec);
         }
       })
 
