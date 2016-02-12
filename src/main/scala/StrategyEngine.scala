@@ -1,3 +1,4 @@
+import org.nirvana._
 import org.zeromq.ZMQ
 import org.zeromq.ZMQ.{Context, Socket}
 import java.io._
@@ -151,11 +152,11 @@ object StrategyEngine {
 
               if (map_pt(mfnominal.symbol).checkIfItIsTimeToWakeUp(Util.getCurrentDateTime)) {
                 DBProcessor.insertMarketDataToItrdTbl(recvdStr)
-                //--------------------------------------------------
-                // TODO not the real code for daily and hourly bars right now
-                //--------------------------------------------------
-                DBProcessor.insertMarketDataToHourlyTbl(recvdStr)
-                DBProcessor.insertMarketDataToDailyTbl(recvdStr)
+                // //--------------------------------------------------
+                // // TODO not the real code for daily and hourly bars right now
+                // //--------------------------------------------------
+                // DBProcessor.insertMarketDataToHourlyTbl(recvdStr)
+                // DBProcessor.insertMarketDataToDailyTbl(recvdStr)
               }
             }
 

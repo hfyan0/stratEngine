@@ -11,7 +11,7 @@ class DBProcessorTest extends AssertionsForJUnit {
   }
 
   @Test def testPutAndGetMarketData2() {
-    Config.readPropFile("/home/qy/Dropbox/nirvana/stratEngine/132.properties")
+    Config.readPropFile("/home/qy/Dropbox/nirvana/sbtProj/stratEngine/132.properties")
     DBProcessor.deleteMDItrdTable
     DBProcessor.insertMarketDataToHourlyTbl("20151211_155514_142013,941,90")
     DBProcessor.insertMarketDataToHourlyTbl("20151212_155514_142013,941,91")
@@ -63,7 +63,7 @@ class DBProcessorTest extends AssertionsForJUnit {
     //--------------------------------------------------
     // read config
     //--------------------------------------------------
-    Config.readPropFile("/home/qy/Dropbox/nirvana/stratEngine/132.properties")
+    Config.readPropFile("/home/qy/Dropbox/nirvana/sbtProj/stratEngine/132.properties")
     //--------------------------------------------------
     // delete tables
     //--------------------------------------------------
@@ -169,7 +169,7 @@ class DBProcessorTest extends AssertionsForJUnit {
     //--------------------------------------------------
     // read config
     //--------------------------------------------------
-    Config.readPropFile("/home/qy/Dropbox/nirvana/stratEngine/132.properties")
+    Config.readPropFile("/home/qy/Dropbox/nirvana/sbtProj/stratEngine/132.properties")
     //--------------------------------------------------
     // delete tables
     //--------------------------------------------------
@@ -239,7 +239,7 @@ class DBProcessorTest extends AssertionsForJUnit {
   //   //--------------------------------------------------
   //   // read config
   //   //--------------------------------------------------
-  //   Config.readPropFile("/home/qy/Dropbox/nirvana/stratEngine/132.properties")
+  //   Config.readPropFile("/home/qy/Dropbox/nirvana/sbtProj/stratEngine/132.properties")
   //
   //   //--------------------------------------------------
   //   // delete tables
@@ -254,10 +254,10 @@ class DBProcessorTest extends AssertionsForJUnit {
   //   //--------------------------------------------------
   //   // marketfeed and tradefeed
   //   //--------------------------------------------------
-  //   val mfs = scala.io.Source.fromFile("/home/qy/Dropbox/nirvana/stratEngine/forUnitTesting/mf.csv").getLines.toList
+  //   val mfs = scala.io.Source.fromFile("/home/qy/Dropbox/nirvana/sbtProj/stratEngine/forUnitTesting/mf.csv").getLines.toList
   //   mfs.foreach(l => DBProcessor.insertMarketDataToItrdTbl(l.toString))
   //
-  //   val tfs = scala.io.Source.fromFile("/home/qy/Dropbox/nirvana/stratEngine/forUnitTesting/tf.csv").getLines.toList
+  //   val tfs = scala.io.Source.fromFile("/home/qy/Dropbox/nirvana/sbtProj/stratEngine/forUnitTesting/tf.csv").getLines.toList
   //   DBProcessor.batchInsertTradeFeedToDB(tfs)
   //   StrategyEngine.calcMtmPnL(new DateTime(2013, 12, 31, 23, 59, 59))
   //

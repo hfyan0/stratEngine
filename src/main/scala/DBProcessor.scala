@@ -1,3 +1,4 @@
+import org.nirvana._
 import java.sql.{Connection, DriverManager, ResultSet, Timestamp};
 import java.util.Properties;
 import scala.collection.mutable.ListBuffer
@@ -234,9 +235,9 @@ object DBProcessor {
     //--------------------------------------------------
     // sort all the obtained prices
     //--------------------------------------------------
-    val res_sorted = results.sortWith(_._2.getMillis > _._2.getMillis).filter(_._2.getMillis <= asOfDate.getMillis)
+    val res_1 = results.filter(_._2.getMillis <= asOfDate.getMillis)
 
-    val res_list = symbols.map(sym => res_sorted.filter(_._1 == sym) match {
+    val res_list = symbols.map(sym => res_1.filter(_._1 == sym).sortWith(_._2.getMillis > _._2.getMillis) match {
       case Nil     => (sym, new DateTime(), 0.0)
       case x :: xs => x
     })
