@@ -1,3 +1,4 @@
+import org.nirvana._
 import org.scalatest.junit.AssertionsForJUnit
 import scala.collection.mutable.ListBuffer
 import org.junit.Assert._
@@ -34,29 +35,29 @@ class DBProcessorTest extends AssertionsForJUnit {
     DBProcessor.insertMarketDataToDailyTbl("20151229_155514_142013,941,108")
     DBProcessor.insertMarketDataToDailyTbl("20151230_155514_142013,941,109")
     DBProcessor.insertMarketDataToDailyTbl("20151231_155514_142013,941,110")
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 11, 23, 59, 59)).get("941").getOrElse(0), 90.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 12, 23, 59, 59)).get("941").getOrElse(0), 91.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 13, 23, 59, 59)).get("941").getOrElse(0), 92.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 14, 23, 59, 59)).get("941").getOrElse(0), 93.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 15, 23, 59, 59)).get("941").getOrElse(0), 94.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 16, 23, 59, 59)).get("941").getOrElse(0), 95.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 17, 23, 59, 59)).get("941").getOrElse(0), 96.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 18, 23, 59, 59)).get("941").getOrElse(0), 97.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 19, 23, 59, 59)).get("941").getOrElse(0), 98.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 20, 23, 59, 59)).get("941").getOrElse(0), 99.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 21, 23, 59, 59)).get("941").getOrElse(0), 100.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 22, 23, 59, 59)).get("941").getOrElse(0), 101.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 23, 23, 59, 59)).get("941").getOrElse(0), 102.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 24, 23, 59, 59)).get("941").getOrElse(0), 103.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 25, 23, 59, 59)).get("941").getOrElse(0), 104.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 26, 23, 59, 59)).get("941").getOrElse(0), 105.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 27, 23, 59, 59)).get("941").getOrElse(0), 106.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 28, 23, 59, 59)).get("941").getOrElse(0), 107.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 29, 23, 59, 59)).get("941").getOrElse(0), 108.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 30, 23, 59, 59)).get("941").getOrElse(0), 109.0)
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 31, 23, 59, 59)).get("941").getOrElse(0), 110.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 11, 23, 59, 59),"941").get("941").getOrElse(0), 90.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 12, 23, 59, 59),"941").get("941").getOrElse(0), 91.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 13, 23, 59, 59),"941").get("941").getOrElse(0), 92.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 14, 23, 59, 59),"941").get("941").getOrElse(0), 93.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 15, 23, 59, 59),"941").get("941").getOrElse(0), 94.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 16, 23, 59, 59),"941").get("941").getOrElse(0), 95.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 17, 23, 59, 59),"941").get("941").getOrElse(0), 96.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 18, 23, 59, 59),"941").get("941").getOrElse(0), 97.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 19, 23, 59, 59),"941").get("941").getOrElse(0), 98.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 20, 23, 59, 59),"941").get("941").getOrElse(0), 99.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 21, 23, 59, 59),"941").get("941").getOrElse(0), 100.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 22, 23, 59, 59),"941").get("941").getOrElse(0), 101.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 23, 23, 59, 59),"941").get("941").getOrElse(0), 102.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 24, 23, 59, 59),"941").get("941").getOrElse(0), 103.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 25, 23, 59, 59),"941").get("941").getOrElse(0), 104.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 26, 23, 59, 59),"941").get("941").getOrElse(0), 105.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 27, 23, 59, 59),"941").get("941").getOrElse(0), 106.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 28, 23, 59, 59),"941").get("941").getOrElse(0), 107.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 29, 23, 59, 59),"941").get("941").getOrElse(0), 108.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 30, 23, 59, 59),"941").get("941").getOrElse(0), 109.0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 31, 23, 59, 59),"941").get("941").getOrElse(0), 110.0)
 
-    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 31, 23, 59, 59)).get("2628").getOrElse(0), 0)
+    assertEquals(DBProcessor.getNominalPricesAsAt(new DateTime(2015, 12, 31, 23, 59, 59),"941").get("2628").getOrElse(0), 0)
   }
 
   @Test def testScen1() {
@@ -119,13 +120,13 @@ class DBProcessorTest extends AssertionsForJUnit {
       .foreach {
         case (x, y, z) =>
           DBProcessor.insertPnLCalcRowToItrdPnLTbl(x, y, z)
-          DBProcessor.insertPortfolioTbl(Some(dt1), x, y, z.cumSgndVol, z.avgPx)
+          DBProcessor.insertPortfolioTbl(Some(dt1), x, y, z.cumSgndVol, z.avgPx, z.cumUrlzdPnL)
       }
 
     val (r1, u1, t1) = DBProcessor.getLastPnLOfStySym("KANGAROO4", "ALJ")
-    assertEquals(r1, -2750.69, Util.SMALLNUM)
-    assertEquals(u1, -122D, Util.SMALLNUM)
-    assertEquals(t1, -2872.69, Util.SMALLNUM)
+    assertEquals(r1, -2750.69, SUtil.SMALLNUM)
+    assertEquals(u1, -122D, SUtil.SMALLNUM)
+    assertEquals(t1, -2872.69, SUtil.SMALLNUM)
 
     DBProcessor.insertTradeFeedToDB("20160119_104024_000000,tradefeed,IBKRATS,ALJ,OID,5,138,2,TID,0,KANGAROO4")
     val dt2 = new DateTime(2016, 1, 19, 10, 40, 24)
@@ -133,12 +134,12 @@ class DBProcessorTest extends AssertionsForJUnit {
       .foreach {
         case (x, y, z) =>
           DBProcessor.insertPnLCalcRowToItrdPnLTbl(x, y, z)
-          DBProcessor.insertPortfolioTbl(Some(dt2), x, y, z.cumSgndVol, z.avgPx)
+          DBProcessor.insertPortfolioTbl(Some(dt2), x, y, z.cumSgndVol, z.avgPx, z.cumUrlzdPnL)
       }
     val (r2, u2, t2) = DBProcessor.getLastPnLOfStySym("KANGAROO4", "ALJ")
-    assertEquals(r2, -3148.69, Util.SMALLNUM)
-    assertEquals(u2, 0D, Util.SMALLNUM)
-    assertEquals(t2, -3148.69, Util.SMALLNUM)
+    assertEquals(r2, -3148.69, SUtil.SMALLNUM)
+    assertEquals(u2, 0D, SUtil.SMALLNUM)
+    assertEquals(t2, -3148.69, SUtil.SMALLNUM)
 
     //--------------------------------------------------
     // getAllStyFromTradesTable
@@ -153,8 +154,8 @@ class DBProcessorTest extends AssertionsForJUnit {
     assertEquals(lsTF1.length, 7)
     assertEquals(lsTF1(0).symbol, "ANAC")
     assertEquals(lsTF1(1).symbol, "ELLI")
-    assertEquals(lsTF1(2).trade_price, 38.35, Util.EPSILON)
-    assertEquals(lsTF1(3).trade_volume, 23, Util.EPSILON)
+    assertEquals(lsTF1(2).trade_price, 38.35, SUtil.EPSILON)
+    assertEquals(lsTF1(3).trade_volume, 23, SUtil.EPSILON)
     assertEquals(lsTF1(4).trade_sign, -1)
 
     val lsTF2 = DBProcessor.getAllTradesForSty("KANGAROO2")
@@ -198,12 +199,12 @@ class DBProcessorTest extends AssertionsForJUnit {
       .foreach {
         case (x, y, z) =>
           DBProcessor.insertPnLCalcRowToItrdPnLTbl(x, y, z)
-          DBProcessor.insertPortfolioTbl(Some(dt1), x, y, z.cumSgndVol, z.avgPx)
+          DBProcessor.insertPortfolioTbl(Some(dt1), x, y, z.cumSgndVol, z.avgPx, z.cumUrlzdPnL)
       }
     val (r0, u0, t0) = DBProcessor.getLastPnLOfStySym("KANGAROO4", "ALJ")
-    assertEquals(r0, 2160.565, Util.SMALLNUM)
-    assertEquals(u0, -546.0, Util.SMALLNUM)
-    assertEquals(t0, 1614.565, Util.SMALLNUM)
+    assertEquals(r0, 2160.565, SUtil.SMALLNUM)
+    assertEquals(u0, -546.0, SUtil.SMALLNUM)
+    assertEquals(t0, 1614.565, SUtil.SMALLNUM)
 
     DBProcessor.insertTradeFeedToDB("20160119_104022_000000,tradefeed,IBKRATS,ALJ,OID,8,400,1,TID,0,KANGAROO4")
     val dt2 = new DateTime(2016, 1, 19, 10, 40, 22)
@@ -211,12 +212,12 @@ class DBProcessorTest extends AssertionsForJUnit {
       .foreach {
         case (x, y, z) =>
           DBProcessor.insertPnLCalcRowToItrdPnLTbl(x, y, z)
-          DBProcessor.insertPortfolioTbl(Some(dt2), x, y, z.cumSgndVol, z.avgPx)
+          DBProcessor.insertPortfolioTbl(Some(dt2), x, y, z.cumSgndVol, z.avgPx, z.cumUrlzdPnL)
       }
     val (r1, u1, t1) = DBProcessor.getLastPnLOfStySym("KANGAROO4", "ALJ")
-    assertEquals(r1, 1992.565, Util.SMALLNUM)
-    assertEquals(u1, 0.0, Util.SMALLNUM)
-    assertEquals(t1, 1992.565, Util.SMALLNUM)
+    assertEquals(r1, 1992.565, SUtil.SMALLNUM)
+    assertEquals(u1, 0.0, SUtil.SMALLNUM)
+    assertEquals(t1, 1992.565, SUtil.SMALLNUM)
 
     DBProcessor.insertTradeFeedToDB("20160119_104023_000000,tradefeed,IBKRATS,ALJ,OID,7,211,2,TID,0,KANGAROO4")
     DBProcessor.insertTradeFeedToDB("20160119_104024_000000,tradefeed,IBKRATS,ALJ,OID,5,138,2,TID,0,KANGAROO4")
@@ -225,12 +226,12 @@ class DBProcessorTest extends AssertionsForJUnit {
       .foreach {
         case (x, y, z) =>
           DBProcessor.insertPnLCalcRowToItrdPnLTbl(x, y, z)
-          DBProcessor.insertPortfolioTbl(Some(dt3), x, y, z.cumSgndVol, z.avgPx)
+          DBProcessor.insertPortfolioTbl(Some(dt3), x, y, z.cumSgndVol, z.avgPx, z.cumUrlzdPnL)
       }
     val (r2, u2, t2) = DBProcessor.getLastPnLOfStySym("KANGAROO4", "ALJ")
-    assertEquals(r2, 1781.565, Util.SMALLNUM)
-    assertEquals(u2, 0.0, Util.SMALLNUM)
-    assertEquals(t2, 1781.565, Util.SMALLNUM)
+    assertEquals(r2, 1781.565, SUtil.SMALLNUM)
+    assertEquals(u2, 0.0, SUtil.SMALLNUM)
+    assertEquals(t2, 1781.565, SUtil.SMALLNUM)
     //--------------------------------------------------
 
   }

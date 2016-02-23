@@ -3,7 +3,7 @@ import java.io.IOException;
 import java.io.FileInputStream;
 import java.util.Date;
 import java.util.Properties;
-import org.joda.time.{DateTime, LocalTime}
+import org.joda.time.{DateTime, LocalDate, LocalTime}
 
 object Config {
 
@@ -27,6 +27,12 @@ object Config {
         case Some(s: String) => s.toInt
         case None            => 300
       }
+      timeForDailyPnLCalnHHMM = Option(prop.getProperty("timeForDailyPnLCalnHHMM")) match {
+        case Some(s: String) => s.toInt
+        case None            => 1602
+      }
+
+      mtmTime = new LocalTime(timeForDailyPnLCalnHHMM / 100, timeForDailyPnLCalnHHMM % 100)
 
       println(jdbcConnStr)
       println(jdbcUser)
@@ -35,6 +41,7 @@ object Config {
       println(zmqTFConnStr)
       println(pnlCalcIntvlInSec)
       println(itrdMktDataUpdateIntvlInSec)
+      println(timeForDailyPnLCalnHHMM)
 
     }
     catch {
@@ -51,8 +58,9 @@ object Config {
   //--------------------------------------------------
   var pnlCalcIntvlInSec = 300
   var itrdMktDataUpdateIntvlInSec = 300
-  var mtmTime: LocalTime = new LocalTime(16, 15)
-  var dtStartCalcPnL: DateTime = new DateTime(2016, 1, 1, 17, 0, 0)
+  var timeForDailyPnLCalnHHMM = 1602
+  var mtmTime: LocalTime = new LocalTime(0,0)
+  var ldStartCalcPnL: LocalDate = new LocalDate(2016, 1, 1)
 
   //--------------------------------------------------
   // JDBC

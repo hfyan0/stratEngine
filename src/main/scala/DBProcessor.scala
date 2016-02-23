@@ -49,18 +49,24 @@ object DBProcessor {
       prep.executeUpdate
     }
   }
+  def deletePortfolioTableWithStratID(stratid: String) {
+    try {
+      val prep = _conn.prepareStatement("delete from portfolios where strategy_id = ?")
+      prep.setString(1, stratid)
+      prep.executeUpdate
+    }
+  }
 
   def insertTradeFeedToDB(sTradeFeed: String) {
     try {
-
-      val (bIsTFValid, csvFields) = Util.parseAugmentedTradeFeed(sTradeFeed)
+      val (bIsTFValid, csvFields) = SUtil.parseAugmentedTradeFeed(sTradeFeed)
       if (bIsTFValid) {
         {
           //--------------------------------------------------
           // trades table
           //--------------------------------------------------
           val prep = _conn.prepareStatement("insert into trades (timestamp,instrument_id,trade_volume,trade_price,buy_sell,order_id,strategy_id) values (?,?,?,?,?,?,?) ")
-          prep.setString(1, Util.convertTimestampFmt1(csvFields(0))) // timestamp
+          prep.setString(1, SUtil.convertTimestampFmt1(csvFields(0))) // timestamp
           prep.setString(2, csvFields(3).toString) // instrument_id
           prep.setDouble(3, csvFields(6).toDouble) // trade_volume
           prep.setDouble(4, csvFields(5).toDouble) // trade_price
@@ -73,9 +79,9 @@ object DBProcessor {
           //--------------------------------------------------
           // signals table
           //--------------------------------------------------
-          val prep = _conn.prepareStatement("insert into signals (status,timestamp,instrument_id,buy_sell,price,volume,comment,strat_id) values (?,?,?,?,?,?,?,?) ")
+          val prep = _conn.prepareStatement("insert into signals (status,timestamp,instrument_id,buy_sell,price,volume,comment,strategy_id) values (?,?,?,?,?,?,?,?) ")
           prep.setInt(1, 0) // states
-          prep.setString(2, Util.convertTimestampFmt1(csvFields(0))) //timestamp
+          prep.setString(2, SUtil.convertTimestampFmt1(csvFields(0))) //timestamp
           prep.setString(3, csvFields(3).toString) // instrument_id
           prep.setDouble(4, csvFields(7).toDouble) // buy_sell
           prep.setDouble(5, csvFields(5).toDouble) // price
@@ -95,9 +101,9 @@ object DBProcessor {
 
       ltf.foreach {
         tf =>
-          val (bIsTFValid, csvFields) = Util.parseAugmentedTradeFeed(tf)
+          val (bIsTFValid, csvFields) = SUtil.parseAugmentedTradeFeed(tf)
           if (bIsTFValid) {
-            prep.setString(1, Util.convertTimestampFmt1(csvFields(0)))
+            prep.setString(1, SUtil.convertTimestampFmt1(csvFields(0)))
             prep.setString(2, csvFields(3).toString)
             prep.setDouble(3, csvFields(6).toDouble)
             prep.setDouble(4, csvFields(5).toDouble)
@@ -116,11 +122,11 @@ object DBProcessor {
   def insertMarketDataToItrdTbl(sMarketFeed: String) {
     try {
 
-      val (bIsMFValid, mfnominal) = Util.parseMarketFeedNominal(sMarketFeed)
+      val (bIsMFValid, mfnominal) = SUtil.parseMarketFeedNominal(sMarketFeed)
       if (bIsMFValid) {
         val prep = _conn.prepareStatement("insert into market_data_intraday (timestamp,instrument_id,nominal_price) values (?,?,?)")
 
-        prep.setString(1, Util.convertDateTimeToStr(mfnominal.datetime))
+        prep.setString(1, SUtil.convertDateTimeToStr(mfnominal.datetime))
         prep.setString(2, mfnominal.symbol)
         prep.setDouble(3, mfnominal.nominal_price)
         prep.executeUpdate
@@ -131,14 +137,14 @@ object DBProcessor {
   def insertMarketDataToHourlyTbl(sMarketFeed: String) {
     try {
 
-      val (bIsMFValid, mfnominal) = Util.parseMarketFeedNominal(sMarketFeed)
+      val (bIsMFValid, mfnominal) = SUtil.parseMarketFeedNominal(sMarketFeed)
       if (bIsMFValid) {
         val prep = _conn.prepareStatement("insert into market_data_hourly_hk_stock (timestamp,instrument_id,open,high,low,close,volume) values (?,?,?,?,?,?,?)")
 
         //--------------------------------------------------
         // TODO correct fake OHLC
         //--------------------------------------------------
-        prep.setString(1, Util.convertDateTimeToStr(mfnominal.datetime))
+        prep.setString(1, SUtil.convertDateTimeToStr(mfnominal.datetime))
         prep.setString(2, mfnominal.symbol)
         prep.setDouble(3, mfnominal.nominal_price)
         prep.setDouble(4, mfnominal.nominal_price)
@@ -152,14 +158,14 @@ object DBProcessor {
   def insertMarketDataToDailyTbl(sMarketFeed: String) {
     try {
 
-      val (bIsMFValid, mfnominal) = Util.parseMarketFeedNominal(sMarketFeed)
+      val (bIsMFValid, mfnominal) = SUtil.parseMarketFeedNominal(sMarketFeed)
       if (bIsMFValid) {
         val prep = _conn.prepareStatement("insert into market_data_daily_hk_stock (timestamp,instrument_id,open,high,low,close,volume) values (?,?,?,?,?,?,?)")
 
         //--------------------------------------------------
         // TODO correct fake OHLC
         //--------------------------------------------------
-        prep.setString(1, Util.convertDateTimeToStr(mfnominal.datetime))
+        prep.setString(1, SUtil.convertDateTimeToStr(mfnominal.datetime))
         prep.setString(2, mfnominal.symbol)
         prep.setDouble(3, mfnominal.nominal_price)
         prep.setDouble(4, mfnominal.nominal_price)
@@ -171,11 +177,17 @@ object DBProcessor {
     }
   }
 
-  def getNominalPricesAsAt(asOfDate: DateTime): Map[String, Double] = {
+  def getNominalPricesAsAt(asOfDate: DateTime, symbol: String): Map[String, Double] = {
 
     var results = List[(String, DateTime, Double)]()
     var symbols = Set[String]()
     var res_map = Map[String, Double]()
+
+    //--------------------------------------------------
+    // just be safe, make sure we can get the latest price, in case the clocks don't perfectly sync
+    //--------------------------------------------------
+    val asOfDateModified = asOfDate.plusMinutes(15)
+    val asOfDateStr = SUtil.convertDateTimeToStr(asOfDateModified)
 
     //--------------------------------------------------
     // from intraday table
@@ -183,12 +195,15 @@ object DBProcessor {
     try {
       val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
 
-      val rs = statement.executeQuery("select timestamp,instrument_id,nominal_price from market_data_intraday order by timestamp desc")
+      val prep = _conn.prepareStatement("select timestamp,instrument_id,nominal_price from market_data_intraday where timestamp <= ? and instrument_id = ? order by timestamp desc limit 2")
+      prep.setString(1, asOfDateStr)
+      prep.setString(2, symbol)
+      val rs = prep.executeQuery()
 
       while (rs.next) {
 
         val symbol = rs.getString("instrument_id")
-        val datetime = Util.convertMySQLTSToDateTime(rs.getString("timestamp"))
+        val datetime = SUtil.convertMySQLTSToDateTime(rs.getString("timestamp"))
         val nominal_price = rs.getDouble("nominal_price")
 
         symbols += symbol
@@ -201,12 +216,15 @@ object DBProcessor {
     try {
       val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
 
-      val rs = statement.executeQuery("select timestamp,instrument_id,close from market_data_hourly_hk_stock order by timestamp desc")
+      val prep = _conn.prepareStatement("select timestamp,instrument_id,close from market_data_hourly_hk_stock where timestamp <= ? and instrument_id = ? order by timestamp desc limit 2")
+      prep.setString(1, asOfDateStr)
+      prep.setString(2, symbol)
+      val rs = prep.executeQuery()
 
       while (rs.next) {
 
         val symbol = rs.getString("instrument_id")
-        val datetime = Util.convertMySQLTSToDateTime(rs.getString("timestamp"))
+        val datetime = SUtil.convertMySQLTSToDateTime(rs.getString("timestamp"))
         val close = rs.getDouble("close")
 
         symbols += symbol
@@ -219,12 +237,15 @@ object DBProcessor {
     try {
       val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
 
-      val rs = statement.executeQuery("select timestamp,instrument_id,close from market_data_daily_hk_stock order by timestamp desc")
+      val prep = _conn.prepareStatement("select timestamp,instrument_id,close from market_data_daily_hk_stock where timestamp <= ? and instrument_id = ? order by timestamp desc limit 2")
+      prep.setString(1, asOfDateStr)
+      prep.setString(2, symbol)
+      val rs = prep.executeQuery()
 
       while (rs.next) {
 
         val symbol = rs.getString("instrument_id")
-        val datetime = Util.convertMySQLTSToDateTime(rs.getString("timestamp"))
+        val datetime = SUtil.convertMySQLTSToDateTime(rs.getString("timestamp"))
         val close = rs.getDouble("close")
 
         symbols += symbol
@@ -235,7 +256,7 @@ object DBProcessor {
     //--------------------------------------------------
     // sort all the obtained prices
     //--------------------------------------------------
-    val res_1 = results.filter(_._2.getMillis <= asOfDate.getMillis)
+    val res_1 = results.filter(_._2.getMillis <= asOfDateModified.getMillis)
 
     val res_list = symbols.map(sym => res_1.filter(_._1 == sym).sortWith(_._2.getMillis > _._2.getMillis) match {
       case Nil     => (sym, new DateTime(), 0.0)
@@ -272,7 +293,7 @@ object DBProcessor {
       val rs = statement.executeQuery("select timestamp from daily_pnl order by timestamp desc limit 1")
 
       while (rs.next) {
-        results = Some(Util.convertMySQLTSToDateTime(rs.getString("timestamp")))
+        results = Some(SUtil.convertMySQLTSToDateTime(rs.getString("timestamp")))
       }
     }
     results
@@ -308,7 +329,7 @@ object DBProcessor {
     try {
       val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
 
-      val rs = statement.executeQuery("select distinct strategy_id from trades order by strategy_id, timestamp")
+      val rs = statement.executeQuery("select distinct strategy_id from trades order by strategy_id")
 
       while (rs.next) {
         results += rs.getString("strategy_id")
@@ -329,7 +350,7 @@ object DBProcessor {
       val rs = prep.executeQuery()
 
       while (rs.next) {
-        val datetime = Util.convertMySQLTSToDateTime(rs.getString("timestamp"))
+        val datetime = SUtil.convertMySQLTSToDateTime(rs.getString("timestamp"))
         val symbol = rs.getString("instrument_id")
         val trade_price = rs.getDouble("trade_price")
         val trade_volume = rs.getDouble("trade_volume")
@@ -356,7 +377,7 @@ object DBProcessor {
     try {
       val prep = _conn.prepareStatement("insert into intraday_pnl (timestamp,instrument_id,realized_pnl,unrealized_pnl,total_pnl,position,strategy_id) values (?,?,?,?,?,?,?)")
 
-      prep.setString(1, Util.getCurrentTimeStampStr)
+      prep.setString(1, SUtil.getCurrentSqlTimeStampStr(HongKong()))
       prep.setString(2, symbol)
       prep.setDouble(3, pnlcalcrow.cumRlzdPnL)
       prep.setDouble(4, pnlcalcrow.cumUrlzdPnL)
@@ -373,10 +394,10 @@ object DBProcessor {
 
       val dtToUse = dt match {
         case Some(dt: DateTime) => dt
-        case _                  => Util.getCurrentDateTime
+        case _                  => SUtil.getCurrentDateTime(HongKong())
       }
 
-      prep.setString(1, Util.convertDateTimeToStr(dtToUse))
+      prep.setString(1, SUtil.convertDateTimeToStr(dtToUse))
       prep.setString(2, symbol)
       prep.setDouble(3, pnlcalcrow.cumRlzdPnL)
       prep.setDouble(4, pnlcalcrow.cumUrlzdPnL)
@@ -386,19 +407,20 @@ object DBProcessor {
     }
   }
 
-  def insertPortfolioTbl(dt: Option[DateTime], strategy_id: String, symbol: String, signedPos: Double, avgPx: Double) {
+  def insertPortfolioTbl(dt: Option[DateTime], strategy_id: String, symbol: String, signedPos: Double, avgPx: Double, cumUrlzdPnL: Double) {
     try {
-      val prep = _conn.prepareStatement("insert into portfolios (instrument_id,volume,avg_price,timestamp,strat_id) values (?,?,?,?,?)")
+      val prep = _conn.prepareStatement("insert into portfolios (instrument_id,volume,avg_price,timestamp,strategy_id,unrealized_pnl) values (?,?,?,?,?,?)")
 
       val dtToUse = dt match {
         case Some(dt: DateTime) => dt
-        case _                  => Util.getCurrentDateTime
+        case _                  => SUtil.getCurrentDateTime(HongKong())
       }
       prep.setString(1, symbol)
       prep.setDouble(2, signedPos)
       prep.setDouble(3, avgPx)
-      prep.setString(4, Util.convertDateTimeToStr(dtToUse))
+      prep.setString(4, SUtil.convertDateTimeToStr(dtToUse))
       prep.setString(5, strategy_id)
+      prep.setDouble(6, cumUrlzdPnL)
       prep.executeUpdate
     }
   }
@@ -415,7 +437,7 @@ object DBProcessor {
       val rs = prep.executeQuery
 
       while (rs.next) {
-        val datetime = Util.convertMySQLTSToDateTime(rs.getString("timestamp"))
+        val datetime = SUtil.convertMySQLTSToDateTime(rs.getString("timestamp"))
         val symbol = rs.getString("instrument_id")
         val trade_price = rs.getDouble("trade_price")
         val trade_volume = rs.getDouble("trade_volume")

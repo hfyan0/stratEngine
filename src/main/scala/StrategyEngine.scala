@@ -6,7 +6,7 @@ import java.nio.Buffer
 import java.nio.ByteOrder
 import java.nio.ByteBuffer
 import scala.math.abs
-import org.joda.time.{Period, DateTime, Duration, LocalTime}
+import org.joda.time.{Period, DateTime, Duration, LocalTime, Minutes}
 
 object StrategyEngine {
 
@@ -25,6 +25,7 @@ object StrategyEngine {
 
     for ((sty, mapslisttf) <- mapStySymTF) {
       for ((sym, listtf) <- mapslisttf) {
+
         var trdPxLast: Double = 0
         var cumSgndVolLast: Double = 0
         var cumSgndVol: Double = 0
@@ -39,7 +40,7 @@ object StrategyEngine {
 
           cumSgndVol += tf.signed_volume
 
-          if (cumSgndVolLast * cumSgndVol < Util.EPSILON) {
+          if (cumSgndVolLast * cumSgndVol < SUtil.EPSILON) {
             psnClosed = cumSgndVolLast
           }
           else {
@@ -52,14 +53,13 @@ object StrategyEngine {
           val rlzdPnL = psnClosed * (tf.trade_price - avgPxLast)
           cumRlzdPnL += rlzdPnL
 
-          if (cumSgndVolLast * cumSgndVol < Util.EPSILON) {
+          if (cumSgndVolLast * cumSgndVol < SUtil.EPSILON) {
             cumSgndNotlAdjChgSgn = tf.trade_price * cumSgndVol
             avgPx = tf.trade_price
           }
           else {
             cumSgndNotlAdjChgSgn += tf.signed_notional + rlzdPnL
             avgPx = cumSgndNotlAdjChgSgn / cumSgndVol
-
           }
 
           val prdTotPnL = cumSgndVolLast * (tf.trade_price - trdPxLast)
@@ -89,7 +89,7 @@ object StrategyEngine {
           pnlcalcrow
         }
 
-        val latestNominalPx = DBProcessor.getNominalPricesAsAt(asOfDate)
+        val latestNominalPx = DBProcessor.getNominalPricesAsAt(asOfDate, sym)
         listpnlcalctbl match {
           case Nil => Nil
           case _ =>
@@ -100,7 +100,7 @@ object StrategyEngine {
               // Do MTM if it has outstanding position
               //--------------------------------------------------
               val dbrowtoinsert = {
-                if (abs(pnlcalcrow_last.cumSgndVol) > Util.EPSILON)
+                if (abs(pnlcalcrow_last.cumSgndVol) > SUtil.EPSILON)
                   pnlcalcrow_last.copy(cumUrlzdPnL = pnlcalcrow_last.cumUrlzdPnL + (pnlcalcrow_last.cumSgndVol * (latestNominalPx.get(sym).getOrElse(pnlcalcrow_last.trdPx) - pnlcalcrow_last.trdPx)))
                 else
                   pnlcalcrow_last
@@ -133,7 +133,8 @@ object StrategyEngine {
 
           //  Prepare our context and socket
           val context = ZMQ.context(1)
-          val socket = context.socket(ZMQ.REP)
+          // val socket = context.socket(ZMQ.REP)
+          val socket = context.socket(ZMQ.PULL)
           socket.bind(Config.zmqMDConnStr)
 
           while (true) {
@@ -144,13 +145,13 @@ object StrategyEngine {
             //--------------------------------------------------
             // insert into database only at a certain time interval
             //--------------------------------------------------
-            val (parseRes, mfnominal) = Util.parseMarketFeedNominal(recvdStr)
+            val (parseRes, mfnominal) = SUtil.parseMarketFeedNominal(recvdStr)
             if (parseRes) {
               if (!map_pt.contains(mfnominal.symbol)) {
                 map_pt += mfnominal.symbol -> new PeriodicTask(Config.itrdMktDataUpdateIntvlInSec)
               }
 
-              if (map_pt(mfnominal.symbol).checkIfItIsTimeToWakeUp(Util.getCurrentDateTime)) {
+              if (map_pt(mfnominal.symbol).checkIfItIsTimeToWakeUp(SUtil.getCurrentDateTime(HongKong()))) {
                 DBProcessor.insertMarketDataToItrdTbl(recvdStr)
                 // //--------------------------------------------------
                 // // TODO not the real code for daily and hourly bars right now
@@ -160,13 +161,13 @@ object StrategyEngine {
               }
             }
 
-            //--------------------------------------------------
-            // send ack through zmq
-            //--------------------------------------------------
-            val reply = "OK ".getBytes
-            reply(reply.length - 1) = 0 //Sets the last byte of the reply to 0
-            socket.send(reply, 0)
-            //--------------------------------------------------
+            // //--------------------------------------------------
+            // // send ack through zmq
+            // //--------------------------------------------------
+            // val reply = "OK ".getBytes
+            // reply(reply.length - 1) = 0 //Sets the last byte of the reply to 0
+            // socket.send(reply, 0)
+            // //--------------------------------------------------
           }
           println("Thread thdMDHandler ends...")
 
@@ -179,7 +180,8 @@ object StrategyEngine {
 
           //  Prepare our context and socket
           val context = ZMQ.context(1)
-          val socket = context.socket(ZMQ.REP)
+          // val socket = context.socket(ZMQ.REP)
+          val socket = context.socket(ZMQ.PULL)
           socket.bind(Config.zmqTFConnStr)
 
           while (true) {
@@ -189,13 +191,13 @@ object StrategyEngine {
             println("Received TF: [" + recvdStr + "]")
             DBProcessor.insertTradeFeedToDB(recvdStr)
 
-            //--------------------------------------------------
-            // send ack through zmq
-            //--------------------------------------------------
-            val reply = "OK ".getBytes
-            reply(reply.length - 1) = 0 //Sets the last byte of the reply to 0
-            socket.send(reply, 0)
-            //--------------------------------------------------
+            // //--------------------------------------------------
+            // // send ack through zmq
+            // //--------------------------------------------------
+            // val reply = "OK ".getBytes
+            // reply(reply.length - 1) = 0 //Sets the last byte of the reply to 0
+            // socket.send(reply, 0)
+            // //--------------------------------------------------
           }
           println("Thread thdTFHandler ends...")
 
@@ -209,15 +211,16 @@ object StrategyEngine {
         def run() {
 
           while (true) {
-            if (pt.checkIfItIsTimeToWakeUp(Util.getCurrentDateTime)) {
+            if (pt.checkIfItIsTimeToWakeUp(SUtil.getCurrentDateTime(HongKong()))) {
               //--------------------------------------------------
               // continuously calculate the latest intraday PnL
               // then insert into PnL table and portfolio table
               //--------------------------------------------------
-              calcMtmPnL(Util.getCurrentDateTime).foreach {
+              calcMtmPnL(SUtil.getCurrentDateTime(HongKong())).foreach {
                 case (x, y, z) => {
                   DBProcessor.insertPnLCalcRowToItrdPnLTbl(x, y, z)
-                  DBProcessor.insertPortfolioTbl(None, x, y, z.cumSgndVol, z.avgPx)
+                  DBProcessor.deletePortfolioTableWithStratID(x)
+                  DBProcessor.insertPortfolioTbl(None, x, y, z.cumSgndVol, z.avgPx, z.cumUrlzdPnL)
                 }
               }
 
@@ -226,21 +229,31 @@ object StrategyEngine {
               // should update for all days up till today
               // then insert into PnL table and portfolio table
               //--------------------------------------------------
-              val dt_last_daily_pnl = DBProcessor.getLastDateTimeInDailyPnLTbl.getOrElse(Config.dtStartCalcPnL)
+              val dt_last_daily_pnl = DBProcessor.getLastDateTimeInDailyPnLTbl
+              val curLD = SUtil.getCurrentDateTime(HongKong()).toLocalDate()
+              val curLT = SUtil.getCurrentDateTime(HongKong()).toLocalTime()
+              val minFromMTM = Minutes.minutesBetween(curLT, Config.mtmTime).getMinutes()
 
-              if (Util.getCurrentDateTime.getMillis - dt_last_daily_pnl.getMillis >= 24 * 60 * 60 * 1000) {
-                val lsDatesInRange = Util.getListOfDatesWithinRange(dt_last_daily_pnl, Util.getCurrentDateTime)
+              val lsDateTimesInRange = {
+                val uptoLD = { if (minFromMTM > 0) curLD.minusDays(1) else curLD }
 
-                lsDatesInRange.foreach(
-                  dtInRng =>
-                    calcMtmPnL(dtInRng).foreach {
-                      case (x, y, z) => {
-                        DBProcessor.insertPnLCalcRowToDailyPnLTbl(Some(dtInRng), x, y, z)
-                        DBProcessor.insertPortfolioTbl(Some(dtInRng), x, y, z.cumSgndVol, z.avgPx)
-                      }
-                    }
-                )
+                if (dt_last_daily_pnl == None)
+                  SUtil.getListOfDatesWithinRange(Config.ldStartCalcPnL, uptoLD, Config.mtmTime)
+                else
+                  SUtil.getListOfDatesWithinRange(dt_last_daily_pnl.get.plusDays(1).toLocalDate(), uptoLD, Config.mtmTime)
               }
+
+              lsDateTimesInRange.foreach(
+                dtInRng =>
+                  calcMtmPnL(dtInRng).foreach {
+                    case (x, y, z) => {
+                      DBProcessor.insertPnLCalcRowToDailyPnLTbl(Some(dtInRng), x, y, z)
+                      //--------------------------------------------------
+                      // portfolios table only contains the latest snapshot, so no need to update here
+                      //--------------------------------------------------
+                    }
+                  }
+              )
             }
 
             Thread.sleep(10)
