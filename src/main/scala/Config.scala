@@ -10,13 +10,18 @@ object Config {
   def readPropFile(propFileName: String) {
 
     try {
-
       val prop = new Properties()
       prop.load(new FileInputStream(propFileName))
 
-      jdbcConnStr = prop.getProperty("jdbcConnStr")
-      jdbcUser = prop.getProperty("jdbcUser")
-      jdbcPwd = prop.getProperty("jdbcPwd")
+      (1 to 9).foreach(i => {
+        val connStr = prop.getProperty("jdbcConnStr" + i)
+        if (connStr != "" && connStr != null) {
+          jdbcConnStr ::= connStr
+          jdbcUser ::= prop.getProperty("jdbcUser" + i)
+          jdbcPwd ::= prop.getProperty("jdbcPwd" + i)
+        }
+      })
+
       zmqMDConnStr = prop.getProperty("zmqMDConnStr")
       zmqTFConnStr = prop.getProperty("zmqTFConnStr")
       pnlCalcIntvlInSec = Option(prop.getProperty("pnlCalcIntvlInSec")) match {
@@ -34,6 +39,8 @@ object Config {
 
       mtmTime = new LocalTime(timeForDailyPnLCalnHHMM / 100, timeForDailyPnLCalnHHMM % 100)
 
+      onlyCalcPnLDuringTradingHr = prop.getProperty("onlyCalcPnLDuringTradingHr").toBoolean
+
       println(jdbcConnStr)
       println(jdbcUser)
       println(jdbcPwd)
@@ -42,6 +49,7 @@ object Config {
       println(pnlCalcIntvlInSec)
       println(itrdMktDataUpdateIntvlInSec)
       println(timeForDailyPnLCalnHHMM)
+      println(onlyCalcPnLDuringTradingHr)
 
     }
     catch {
@@ -61,13 +69,14 @@ object Config {
   var timeForDailyPnLCalnHHMM = 1602
   var mtmTime: LocalTime = new LocalTime(0,0)
   var ldStartCalcPnL: LocalDate = new LocalDate(2016, 1, 1)
+  var onlyCalcPnLDuringTradingHr: Boolean = true
 
   //--------------------------------------------------
   // JDBC
   //--------------------------------------------------
-  var jdbcConnStr = ""
-  var jdbcUser = ""
-  var jdbcPwd = ""
+  var jdbcConnStr = List[String]()
+  var jdbcUser = List[String]()
+  var jdbcPwd = List[String]()
 
   //--------------------------------------------------
   // zmq

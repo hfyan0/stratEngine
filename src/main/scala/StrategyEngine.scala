@@ -211,18 +211,28 @@ object StrategyEngine {
         def run() {
 
           while (true) {
-            if (pt.checkIfItIsTimeToWakeUp(SUtil.getCurrentDateTime(HongKong()))) {
+            val curHKTime = SUtil.getCurrentDateTime(HongKong())
+
+            if (pt.checkIfItIsTimeToWakeUp(curHKTime) && (!Config.onlyCalcPnLDuringTradingHr || TradingHours.isTradingHour("HKSTK", curHKTime))) {
               //--------------------------------------------------
               // continuously calculate the latest intraday PnL
               // then insert into PnL table and portfolio table
               //--------------------------------------------------
-              calcMtmPnL(SUtil.getCurrentDateTime(HongKong())).foreach {
-                case (x, y, z) => {
-                  DBProcessor.insertPnLCalcRowToItrdPnLTbl(x, y, z)
-                  DBProcessor.deletePortfolioTableWithStratID(x)
-                  DBProcessor.insertPortfolioTbl(None, x, y, z.cumSgndVol, z.avgPx, z.cumUrlzdPnL)
-                }
-              }
+              val lsStySymPnLRow = calcMtmPnL(SUtil.getCurrentDateTime(HongKong()))
+
+              DBProcessor.insertPnLCalcRowToItrdPnLTbl(lsStySymPnLRow)
+              DBProcessor.updateOrInsertPortfolioTbl(None, lsStySymPnLRow)
+
+              // DBProcessor.deletePortfolioTable(lsStySymPnLRow)
+              // DBProcessor.insertPortfolioTbl(None, lsStySymPnLRow)
+
+              // lsStySymPnLRow.foreach {
+              //   case (x, y, z) => {
+              //     DBProcessor.insertPnLCalcRowToItrdPnLTbl(x, y, z)
+              //     DBProcessor.deletePortfolioTableWithStratIDSym(x, y)
+              //     DBProcessor.insertPortfolioTbl(None, x, y, z.cumSgndVol, z.avgPx, z.cumUrlzdPnL)
+              //   }
+              // }
 
               //--------------------------------------------------
               // check whether daily PnL should be updated
@@ -243,29 +253,47 @@ object StrategyEngine {
                   SUtil.getListOfDatesWithinRange(dt_last_daily_pnl.get.plusDays(1).toLocalDate(), uptoLD, Config.mtmTime)
               }
 
-              lsDateTimesInRange.foreach(
-                dtInRng =>
-                  calcMtmPnL(dtInRng).foreach {
-                    case (x, y, z) => {
-                      DBProcessor.insertPnLCalcRowToDailyPnLTbl(Some(dtInRng), x, y, z)
-                      //--------------------------------------------------
-                      // portfolios table only contains the latest snapshot, so no need to update here
-                      //--------------------------------------------------
-                    }
-                  }
-              )
+              lsDateTimesInRange.foreach(dtInRng => DBProcessor.insertPnLCalcRowToDailyPnLTbl(Some(dtInRng), calcMtmPnL(dtInRng)))
+
+              // lsDateTimesInRange.foreach(
+              //   dtInRng => calcMtmPnL(dtInRng).foreach {
+              //       case (x, y, z) => {
+              //         DBProcessor.insertPnLCalcRowToDailyPnLTbl(Some(dtInRng), x, y, z)
+              //         //--------------------------------------------------
+              //         // portfolios table only contains the latest snapshot, so no need to update here
+              //         //--------------------------------------------------
+              //       }
+              //     }
+              // )
+
             }
 
-            Thread.sleep(10)
+            Thread.sleep(Config.pnlCalcIntvlInSec)
           }
 
         }
       })
 
+      val thdCleanData = new Thread(new Runnable {
+
+        def run() {
+
+          while (true) {
+            val dtcutoff = SUtil.getCurrentDateTime(HongKong()).minusDays(2)
+            DBProcessor.cleanMarketDataInItrdTbl(dtcutoff)
+            DBProcessor.cleanItrdPnLTbl(dtcutoff)
+
+            Thread.sleep(60)
+          }
+          println("Thread thdCleanData ends...")
+
+        }
+      })
       //--------------------------------------------------
       thdTFHandler.start
       thdMDHandler.start
       thdPnLCalculator.start
+      thdCleanData.start
 
       while (true) {
         Thread.sleep(2000);

@@ -11,173 +11,259 @@ object DBProcessor {
 
   Class.forName("com.mysql.jdbc.Driver")
 
-  var p = new Properties()
-  p.put("user", Config.jdbcUser)
-  p.put("password", Config.jdbcPwd)
-  val _conn = DriverManager.getConnection(Config.jdbcConnStr, p)
-  // val _conn = DriverManager.getConnection(Config.jdbcConnStr + "?user=" +Config.jdbcUser+"&password="+Config.jdbcPwd)
+  var lsConn = List[Connection]()
+
+  (0 until Config.jdbcConnStr.length).foreach(i => {
+    var p = new Properties()
+    p.put("user", Config.jdbcUser(i))
+    p.put("password", Config.jdbcPwd(i))
+    val _conn = DriverManager.getConnection(Config.jdbcConnStr(i), p)
+    _conn.setAutoCommit(false)
+    lsConn ::= _conn
+  })
 
   def deleteSignalsTable() {
-    try {
-      val prep = _conn.prepareStatement("delete from signals")
-      prep.executeUpdate
-    }
+    lsConn.foreach(_conn => {
+      try {
+        val prep = _conn.prepareStatement("delete from signals")
+        prep.executeUpdate
+        _conn.commit
+      }
+    })
   }
+
   def deleteTradesTable() {
-    try {
-      val prep = _conn.prepareStatement("delete from trades")
-      prep.executeUpdate
-    }
+    lsConn.foreach(_conn => {
+      try {
+        val prep = _conn.prepareStatement("delete from trades")
+        prep.executeUpdate
+        _conn.commit
+      }
+    })
   }
 
   def deleteMDItrdTable() {
-    try {
-      val prep = _conn.prepareStatement("delete from market_data_intraday")
-      prep.executeUpdate
-    }
+    lsConn.foreach(_conn => {
+      try {
+        val prep = _conn.prepareStatement("delete from market_data_intraday")
+        prep.executeUpdate
+        _conn.commit
+      }
+    })
   }
 
   def deleteItrdPnLTable() {
-    try {
-      val prep = _conn.prepareStatement("delete from intraday_pnl")
-      prep.executeUpdate
-    }
+    lsConn.foreach(_conn => {
+      try {
+        val prep = _conn.prepareStatement("delete from intraday_pnl")
+        prep.executeUpdate
+        _conn.commit
+      }
+    })
   }
+
   def deletePortfolioTable() {
-    try {
-      val prep = _conn.prepareStatement("delete from portfolios")
-      prep.executeUpdate
-    }
+    lsConn.foreach(_conn => {
+      try {
+        val prep = _conn.prepareStatement("delete from portfolios")
+        prep.executeUpdate
+        _conn.commit
+      }
+    })
   }
-  def deletePortfolioTableWithStratID(stratid: String) {
-    try {
-      val prep = _conn.prepareStatement("delete from portfolios where strategy_id = ?")
-      prep.setString(1, stratid)
-      prep.executeUpdate
-    }
+
+  def deletePortfolioTable(lsStySymPnLRow: List[(String, String, PnLCalcRow)]) {
+    lsConn.foreach(_conn => {
+      try {
+        val prep = _conn.prepareStatement("delete from portfolios where strategy_id = ? and instrument_id = ?")
+
+        lsStySymPnLRow.foreach {
+          case (stratid, symbol, pnlcalcrow) => {
+            prep.setString(1, stratid)
+            prep.setString(2, symbol)
+            prep.addBatch
+          }
+        }
+
+        prep.executeBatch
+        _conn.commit
+      }
+    })
+  }
+
+  def deletePortfolioTableWithStratIDSym(stratid: String, symbol: String) {
+    lsConn.foreach(_conn => {
+      try {
+        val prep = _conn.prepareStatement("delete from portfolios where strategy_id = ? and instrument_id = ?")
+        prep.setString(1, stratid)
+        prep.setString(2, symbol)
+        prep.executeUpdate
+        _conn.commit
+      }
+    })
   }
 
   def insertTradeFeedToDB(sTradeFeed: String) {
-    try {
-      val (bIsTFValid, csvFields) = SUtil.parseAugmentedTradeFeed(sTradeFeed)
-      if (bIsTFValid) {
-        {
-          //--------------------------------------------------
-          // trades table
-          //--------------------------------------------------
-          val prep = _conn.prepareStatement("insert into trades (timestamp,instrument_id,trade_volume,trade_price,buy_sell,order_id,strategy_id) values (?,?,?,?,?,?,?) ")
-          prep.setString(1, SUtil.convertTimestampFmt1(csvFields(0))) // timestamp
-          prep.setString(2, csvFields(3).toString) // instrument_id
-          prep.setDouble(3, csvFields(6).toDouble) // trade_volume
-          prep.setDouble(4, csvFields(5).toDouble) // trade_price
-          prep.setDouble(5, csvFields(7).toDouble) // buy_sell
-          prep.setInt(6, csvFields(9).toInt) // order_id
-          prep.setString(7, csvFields(10)) // strategy_id
-          prep.executeUpdate
-        }
-        {
-          //--------------------------------------------------
-          // signals table
-          //--------------------------------------------------
-          val prep = _conn.prepareStatement("insert into signals (status,timestamp,instrument_id,buy_sell,price,volume,comment,strategy_id) values (?,?,?,?,?,?,?,?) ")
-          prep.setInt(1, 0) // states
-          prep.setString(2, SUtil.convertTimestampFmt1(csvFields(0))) //timestamp
-          prep.setString(3, csvFields(3).toString) // instrument_id
-          prep.setDouble(4, csvFields(7).toDouble) // buy_sell
-          prep.setDouble(5, csvFields(5).toDouble) // price
-          prep.setDouble(6, csvFields(6).toDouble) // volume
-          prep.setString(7, csvFields(4)) // comment
-          prep.setString(8, csvFields(10)) // strategy_id
-          prep.executeUpdate
+    lsConn.foreach(_conn => {
+      try {
+        val (bIsTFValid, csvFields) = SUtil.parseAugmentedTradeFeed(sTradeFeed)
+        if (bIsTFValid) {
+          {
+            //--------------------------------------------------
+            // trades table
+            //--------------------------------------------------
+            val prep = _conn.prepareStatement("insert into trades (timestamp,instrument_id,trade_volume,trade_price,buy_sell,order_id,strategy_id) values (?,?,?,?,?,?,?) ")
+            prep.setString(1, SUtil.convertTimestampFmt1(csvFields(0))) // timestamp
+            prep.setString(2, csvFields(3).toString) // instrument_id
+            prep.setDouble(3, csvFields(6).toDouble) // trade_volume
+            prep.setDouble(4, csvFields(5).toDouble) // trade_price
+            prep.setDouble(5, csvFields(7).toDouble) // buy_sell
+            prep.setInt(6, csvFields(9).toInt) // order_id
+            prep.setString(7, csvFields(10)) // strategy_id
+            prep.executeUpdate
+            // _conn.commit
+          }
+          {
+            //--------------------------------------------------
+            // signals table
+            //--------------------------------------------------
+            val prep = _conn.prepareStatement("insert into signals (status,timestamp,instrument_id,buy_sell,price,volume,comment,strategy_id) values (?,?,?,?,?,?,?,?) ")
+            prep.setInt(1, 0) // states
+            prep.setString(2, SUtil.convertTimestampFmt1(csvFields(0))) //timestamp
+            prep.setString(3, csvFields(3).toString) // instrument_id
+            prep.setDouble(4, csvFields(7).toDouble) // buy_sell
+            prep.setDouble(5, csvFields(5).toDouble) // price
+            prep.setDouble(6, csvFields(6).toDouble) // volume
+            prep.setString(7, csvFields(4)) // comment
+            prep.setString(8, csvFields(10)) // strategy_id
+            prep.executeUpdate
+            _conn.commit
+          }
         }
       }
-    }
+    })
   }
 
   def batchInsertTradeFeedToDB(ltf: List[String]) {
-    try {
+    lsConn.foreach(_conn => {
+      try {
 
-      val prep = _conn.prepareStatement("insert into trades (timestamp,instrument_id,trade_volume,trade_price,buy_sell,order_id,strategy_id) values (?,?,?,?,?,?,?) ")
+        val prep = _conn.prepareStatement("insert into trades (timestamp,instrument_id,trade_volume,trade_price,buy_sell,order_id,strategy_id) values (?,?,?,?,?,?,?) ")
 
-      ltf.foreach {
-        tf =>
-          val (bIsTFValid, csvFields) = SUtil.parseAugmentedTradeFeed(tf)
-          if (bIsTFValid) {
-            prep.setString(1, SUtil.convertTimestampFmt1(csvFields(0)))
-            prep.setString(2, csvFields(3).toString)
-            prep.setDouble(3, csvFields(6).toDouble)
-            prep.setDouble(4, csvFields(5).toDouble)
-            prep.setDouble(5, csvFields(7).toDouble)
-            prep.setInt(6, csvFields(9).toInt)
-            prep.setString(7, csvFields(10))
-            prep.addBatch()
-          }
+        ltf.foreach {
+          tf =>
+            val (bIsTFValid, csvFields) = SUtil.parseAugmentedTradeFeed(tf)
+            if (bIsTFValid) {
+              prep.setString(1, SUtil.convertTimestampFmt1(csvFields(0)))
+              prep.setString(2, csvFields(3).toString)
+              prep.setDouble(3, csvFields(6).toDouble)
+              prep.setDouble(4, csvFields(5).toDouble)
+              prep.setDouble(5, csvFields(7).toDouble)
+              prep.setInt(6, csvFields(9).toInt)
+              prep.setString(7, csvFields(10))
+              prep.addBatch()
+            }
+        }
+
+        prep.executeBatch
+        _conn.commit
+
       }
-
-      prep.executeBatch
-
-    }
+    })
   }
 
   def insertMarketDataToItrdTbl(sMarketFeed: String) {
-    try {
+    lsConn.foreach(_conn => {
+      try {
 
-      val (bIsMFValid, mfnominal) = SUtil.parseMarketFeedNominal(sMarketFeed)
-      if (bIsMFValid) {
-        val prep = _conn.prepareStatement("insert into market_data_intraday (timestamp,instrument_id,nominal_price) values (?,?,?)")
+        val (bIsMFValid, mfnominal) = SUtil.parseMarketFeedNominal(sMarketFeed)
+        if (bIsMFValid) {
+          val prep = _conn.prepareStatement("insert into market_data_intraday (timestamp,instrument_id,nominal_price) values (?,?,?)")
 
-        prep.setString(1, SUtil.convertDateTimeToStr(mfnominal.datetime))
-        prep.setString(2, mfnominal.symbol)
-        prep.setDouble(3, mfnominal.nominal_price)
-        prep.executeUpdate
+          prep.setString(1, SUtil.convertDateTimeToStr(mfnominal.datetime))
+          prep.setString(2, mfnominal.symbol)
+          prep.setDouble(3, mfnominal.nominal_price)
+          prep.executeUpdate
+          _conn.commit
+        }
       }
-    }
+    })
   }
 
   def insertMarketDataToHourlyTbl(sMarketFeed: String) {
-    try {
+    lsConn.foreach(_conn => {
+      try {
 
-      val (bIsMFValid, mfnominal) = SUtil.parseMarketFeedNominal(sMarketFeed)
-      if (bIsMFValid) {
-        val prep = _conn.prepareStatement("insert into market_data_hourly_hk_stock (timestamp,instrument_id,open,high,low,close,volume) values (?,?,?,?,?,?,?)")
+        val (bIsMFValid, mfnominal) = SUtil.parseMarketFeedNominal(sMarketFeed)
+        if (bIsMFValid) {
+          val prep = _conn.prepareStatement("insert into market_data_hourly_hk_stock (timestamp,instrument_id,open,high,low,close,volume) values (?,?,?,?,?,?,?)")
 
-        //--------------------------------------------------
-        // TODO correct fake OHLC
-        //--------------------------------------------------
-        prep.setString(1, SUtil.convertDateTimeToStr(mfnominal.datetime))
-        prep.setString(2, mfnominal.symbol)
-        prep.setDouble(3, mfnominal.nominal_price)
-        prep.setDouble(4, mfnominal.nominal_price)
-        prep.setDouble(5, mfnominal.nominal_price)
-        prep.setDouble(6, mfnominal.nominal_price)
-        prep.setDouble(7, 1)
-        prep.executeUpdate
+          //--------------------------------------------------
+          // TODO correct fake OHLC
+          //--------------------------------------------------
+          prep.setString(1, SUtil.convertDateTimeToStr(mfnominal.datetime))
+          prep.setString(2, mfnominal.symbol)
+          prep.setDouble(3, mfnominal.nominal_price)
+          prep.setDouble(4, mfnominal.nominal_price)
+          prep.setDouble(5, mfnominal.nominal_price)
+          prep.setDouble(6, mfnominal.nominal_price)
+          prep.setDouble(7, 1)
+          prep.executeUpdate
+          _conn.commit
+        }
       }
-    }
+    })
   }
+
   def insertMarketDataToDailyTbl(sMarketFeed: String) {
-    try {
+    lsConn.foreach(_conn => {
+      try {
 
-      val (bIsMFValid, mfnominal) = SUtil.parseMarketFeedNominal(sMarketFeed)
-      if (bIsMFValid) {
-        val prep = _conn.prepareStatement("insert into market_data_daily_hk_stock (timestamp,instrument_id,open,high,low,close,volume) values (?,?,?,?,?,?,?)")
+        val (bIsMFValid, mfnominal) = SUtil.parseMarketFeedNominal(sMarketFeed)
+        if (bIsMFValid) {
+          val prep = _conn.prepareStatement("insert into market_data_daily_hk_stock (timestamp,instrument_id,open,high,low,close,volume) values (?,?,?,?,?,?,?)")
 
-        //--------------------------------------------------
-        // TODO correct fake OHLC
-        //--------------------------------------------------
-        prep.setString(1, SUtil.convertDateTimeToStr(mfnominal.datetime))
-        prep.setString(2, mfnominal.symbol)
-        prep.setDouble(3, mfnominal.nominal_price)
-        prep.setDouble(4, mfnominal.nominal_price)
-        prep.setDouble(5, mfnominal.nominal_price)
-        prep.setDouble(6, mfnominal.nominal_price)
-        prep.setDouble(7, 1)
-        prep.executeUpdate
+          //--------------------------------------------------
+          // TODO correct fake OHLC
+          //--------------------------------------------------
+          prep.setString(1, SUtil.convertDateTimeToStr(mfnominal.datetime))
+          prep.setString(2, mfnominal.symbol)
+          prep.setDouble(3, mfnominal.nominal_price)
+          prep.setDouble(4, mfnominal.nominal_price)
+          prep.setDouble(5, mfnominal.nominal_price)
+          prep.setDouble(6, mfnominal.nominal_price)
+          prep.setDouble(7, 1)
+          prep.executeUpdate
+          _conn.commit
+        }
       }
-    }
+    })
+  }
+
+  def cleanMarketDataInItrdTbl(dt: DateTime) {
+    lsConn.foreach(_conn => {
+      try {
+        val prep = _conn.prepareStatement("delete from market_data_intraday where timestamp < ?")
+        prep.setString(1, SUtil.convertDateTimeToStr(dt))
+        prep.executeUpdate
+        _conn.commit
+      }
+    })
+  }
+
+  def cleanItrdPnLTbl(dt: DateTime) {
+    lsConn.foreach(_conn => {
+      try {
+        val prep = _conn.prepareStatement("delete from intraday_pnl where timestamp < ?")
+        prep.setString(1, SUtil.convertDateTimeToStr(dt))
+        prep.executeUpdate
+        _conn.commit
+      }
+    })
   }
 
   def getNominalPricesAsAt(asOfDate: DateTime, symbol: String): Map[String, Double] = {
+    val _conn = lsConn.head
 
     var results = List[(String, DateTime, Double)]()
     var symbols = Set[String]()
@@ -268,6 +354,7 @@ object DBProcessor {
   }
 
   def getTotalPnLOfSty(strategy_id: String): Double = {
+    val _conn = lsConn.head
 
     var results: Double = 0
 
@@ -285,6 +372,8 @@ object DBProcessor {
     results
   }
   def getLastDateTimeInDailyPnLTbl(): Option[DateTime] = {
+    val _conn = lsConn.head
+
     var results: Option[DateTime] = None
 
     try {
@@ -300,6 +389,7 @@ object DBProcessor {
   }
 
   def getLastPnLOfStySym(strategy_id: String, symbol: String): (Double, Double, Double) = {
+    val _conn = lsConn.head
 
     var rlzdPnL: Double = 0
     var urlzdPnL: Double = 0
@@ -323,6 +413,7 @@ object DBProcessor {
   }
 
   def getAllStyFromTradesTable(): List[String] = {
+    val _conn = lsConn.head
 
     var results = ListBuffer[String]()
 
@@ -339,6 +430,7 @@ object DBProcessor {
   }
 
   def getAllTradesForSty(sty: String): List[TradeFeed] = {
+    val _conn = lsConn.head
 
     var results = ListBuffer[TradeFeed]()
 
@@ -374,58 +466,209 @@ object DBProcessor {
   }
 
   def insertPnLCalcRowToItrdPnLTbl(strategy_id: String, symbol: String, pnlcalcrow: PnLCalcRow) {
-    try {
-      val prep = _conn.prepareStatement("insert into intraday_pnl (timestamp,instrument_id,realized_pnl,unrealized_pnl,total_pnl,position,strategy_id) values (?,?,?,?,?,?,?)")
+    lsConn.foreach(_conn => {
+      try {
+        val prep = _conn.prepareStatement("insert into intraday_pnl (timestamp,instrument_id,realized_pnl,unrealized_pnl,total_pnl,position,strategy_id) values (?,?,?,?,?,?,?)")
 
-      prep.setString(1, SUtil.getCurrentSqlTimeStampStr(HongKong()))
-      prep.setString(2, symbol)
-      prep.setDouble(3, pnlcalcrow.cumRlzdPnL)
-      prep.setDouble(4, pnlcalcrow.cumUrlzdPnL)
-      prep.setDouble(5, pnlcalcrow.cumRlzdPnL + pnlcalcrow.cumUrlzdPnL)
-      prep.setDouble(6, pnlcalcrow.cumSgndVol)
-      prep.setString(7, strategy_id)
-      prep.executeUpdate
-    }
+        prep.setString(1, SUtil.getCurrentSqlTimeStampStr(HongKong()))
+        prep.setString(2, symbol)
+        prep.setDouble(3, pnlcalcrow.cumRlzdPnL)
+        prep.setDouble(4, pnlcalcrow.cumUrlzdPnL)
+        prep.setDouble(5, pnlcalcrow.cumRlzdPnL + pnlcalcrow.cumUrlzdPnL)
+        prep.setDouble(6, pnlcalcrow.cumSgndVol)
+        prep.setString(7, strategy_id)
+        prep.executeUpdate
+        _conn.commit
+      }
+    })
+  }
+
+  def insertPnLCalcRowToItrdPnLTbl(lsStySymPnLRow: List[(String, String, PnLCalcRow)]) {
+    lsConn.foreach(_conn => {
+      try {
+
+        val prep = _conn.prepareStatement("insert into intraday_pnl (timestamp,instrument_id,realized_pnl,unrealized_pnl,total_pnl,position,strategy_id) values (?,?,?,?,?,?,?)")
+
+        lsStySymPnLRow.foreach {
+          case (strategy_id, symbol, pnlcalcrow) => {
+
+            prep.setString(1, SUtil.getCurrentSqlTimeStampStr(HongKong()))
+            prep.setString(2, symbol)
+            prep.setDouble(3, pnlcalcrow.cumRlzdPnL)
+            prep.setDouble(4, pnlcalcrow.cumUrlzdPnL)
+            prep.setDouble(5, pnlcalcrow.cumRlzdPnL + pnlcalcrow.cumUrlzdPnL)
+            prep.setDouble(6, pnlcalcrow.cumSgndVol)
+            prep.setString(7, strategy_id)
+            prep.addBatch
+          }
+        }
+
+        prep.executeBatch
+        _conn.commit
+      }
+    })
+  }
+
+  def insertPnLCalcRowToDailyPnLTbl(dt: Option[DateTime], lsStySymPnLRow: List[(String, String, PnLCalcRow)]) {
+    lsConn.foreach(_conn => {
+      try {
+        val prep = _conn.prepareStatement("insert into daily_pnl (timestamp,instrument_id,realized_pnl,unrealized_pnl,position,strategy_id) values (?,?,?,?,?,?)")
+
+        val dtToUse = dt match {
+          case Some(dt: DateTime) => dt
+          case _                  => SUtil.getCurrentDateTime(HongKong())
+        }
+
+        lsStySymPnLRow.foreach {
+          case (strategy_id, symbol, pnlcalcrow) => {
+            prep.setString(1, SUtil.convertDateTimeToStr(dtToUse))
+            prep.setString(2, symbol)
+            prep.setDouble(3, pnlcalcrow.cumRlzdPnL)
+            prep.setDouble(4, pnlcalcrow.cumUrlzdPnL)
+            prep.setDouble(5, pnlcalcrow.cumSgndVol)
+            prep.setString(6, strategy_id)
+            prep.addBatch
+          }
+        }
+
+        prep.executeBatch
+        _conn.commit
+      }
+    })
   }
 
   def insertPnLCalcRowToDailyPnLTbl(dt: Option[DateTime], strategy_id: String, symbol: String, pnlcalcrow: PnLCalcRow) {
-    try {
-      val prep = _conn.prepareStatement("insert into daily_pnl (timestamp,instrument_id,realized_pnl,unrealized_pnl,position,strategy_id) values (?,?,?,?,?,?)")
+    lsConn.foreach(_conn => {
+      try {
+        val prep = _conn.prepareStatement("insert into daily_pnl (timestamp,instrument_id,realized_pnl,unrealized_pnl,position,strategy_id) values (?,?,?,?,?,?)")
 
-      val dtToUse = dt match {
-        case Some(dt: DateTime) => dt
-        case _                  => SUtil.getCurrentDateTime(HongKong())
+        val dtToUse = dt match {
+          case Some(dt: DateTime) => dt
+          case _                  => SUtil.getCurrentDateTime(HongKong())
+        }
+
+        prep.setString(1, SUtil.convertDateTimeToStr(dtToUse))
+        prep.setString(2, symbol)
+        prep.setDouble(3, pnlcalcrow.cumRlzdPnL)
+        prep.setDouble(4, pnlcalcrow.cumUrlzdPnL)
+        prep.setDouble(5, pnlcalcrow.cumSgndVol)
+        prep.setString(6, strategy_id)
+        prep.executeUpdate
+        _conn.commit
       }
+    })
+  }
 
-      prep.setString(1, SUtil.convertDateTimeToStr(dtToUse))
-      prep.setString(2, symbol)
-      prep.setDouble(3, pnlcalcrow.cumRlzdPnL)
-      prep.setDouble(4, pnlcalcrow.cumUrlzdPnL)
-      prep.setDouble(5, pnlcalcrow.cumSgndVol)
-      prep.setString(6, strategy_id)
-      prep.executeUpdate
-    }
+  def insertPortfolioTbl(dt: Option[DateTime], lsStySymPnLRow: List[(String, String, PnLCalcRow)]) {
+    lsConn.foreach(_conn => {
+      try {
+        val dtToUse = dt match {
+          case Some(dt: DateTime) => dt
+          case _                  => SUtil.getCurrentDateTime(HongKong())
+        }
+
+        val prep = _conn.prepareStatement("insert into portfolios (instrument_id,volume,avg_price,timestamp,strategy_id,unrealized_pnl) values (?,?,?,?,?,?)")
+
+        lsStySymPnLRow.foreach {
+          case (strategy_id, symbol, pnlcalcrow) => {
+            prep.setString(1, symbol)
+            prep.setDouble(2, pnlcalcrow.cumSgndVol)
+            prep.setDouble(3, pnlcalcrow.avgPx)
+            prep.setString(4, SUtil.convertDateTimeToStr(dtToUse))
+            prep.setString(5, strategy_id)
+            prep.setDouble(6, pnlcalcrow.cumUrlzdPnL)
+            prep.addBatch
+          }
+        }
+
+        prep.executeBatch
+        _conn.commit
+      }
+    })
+  }
+
+  def updateOrInsertPortfolioTbl(dt: Option[DateTime], lsStySymPnLRow: List[(String, String, PnLCalcRow)]) {
+    lsConn.foreach(_conn => {
+      try {
+
+        val dtToUse = dt match {
+          case Some(dt: DateTime) => dt
+          case _                  => SUtil.getCurrentDateTime(HongKong())
+        }
+
+        val prep1 = _conn.prepareStatement("select count(*) as cnt from portfolios where strategy_id=? and instrument_id=?")
+        val prep2 = _conn.prepareStatement("insert into portfolios (instrument_id,volume,avg_price,timestamp,strategy_id,unrealized_pnl) values (?,?,?,?,?,?)")
+        val prep3 = _conn.prepareStatement("update portfolios set volume=?,avg_price=?,timestamp=?,unrealized_pnl=? where strategy_id=? and instrument_id=?")
+
+        lsStySymPnLRow.foreach {
+          case (strategy_id, symbol, pnlcalcrow) => {
+
+            prep1.setString(1, strategy_id)
+            prep1.setString(2, symbol)
+
+            val rs = prep1.executeQuery
+
+            val cnt = if (rs.next) rs.getInt("cnt") else 0
+
+            if (cnt == 0) {
+              //--------------------------------------------------
+              // insert
+              //--------------------------------------------------
+              prep2.setString(1, symbol)
+              prep2.setDouble(2, pnlcalcrow.cumSgndVol)
+              prep2.setDouble(3, pnlcalcrow.avgPx)
+              prep2.setString(4, SUtil.convertDateTimeToStr(dtToUse))
+              prep2.setString(5, strategy_id)
+              prep2.setDouble(6, pnlcalcrow.cumUrlzdPnL)
+              prep2.addBatch
+            }
+            else {
+              //--------------------------------------------------
+              // update
+              //--------------------------------------------------
+              prep3.setDouble(1, pnlcalcrow.cumSgndVol)
+              prep3.setDouble(2, pnlcalcrow.avgPx)
+              prep3.setString(3, SUtil.convertDateTimeToStr(dtToUse))
+              prep3.setDouble(4, pnlcalcrow.cumUrlzdPnL)
+
+              prep3.setString(5, strategy_id)
+              prep3.setString(6, symbol)
+              prep3.addBatch
+            }
+
+          }
+        }
+
+        prep2.executeBatch
+        prep3.executeBatch
+        _conn.commit
+      }
+    })
   }
 
   def insertPortfolioTbl(dt: Option[DateTime], strategy_id: String, symbol: String, signedPos: Double, avgPx: Double, cumUrlzdPnL: Double) {
-    try {
-      val prep = _conn.prepareStatement("insert into portfolios (instrument_id,volume,avg_price,timestamp,strategy_id,unrealized_pnl) values (?,?,?,?,?,?)")
+    lsConn.foreach(_conn => {
+      try {
+        val prep = _conn.prepareStatement("insert into portfolios (instrument_id,volume,avg_price,timestamp,strategy_id,unrealized_pnl) values (?,?,?,?,?,?)")
 
-      val dtToUse = dt match {
-        case Some(dt: DateTime) => dt
-        case _                  => SUtil.getCurrentDateTime(HongKong())
+        val dtToUse = dt match {
+          case Some(dt: DateTime) => dt
+          case _                  => SUtil.getCurrentDateTime(HongKong())
+        }
+        prep.setString(1, symbol)
+        prep.setDouble(2, signedPos)
+        prep.setDouble(3, avgPx)
+        prep.setString(4, SUtil.convertDateTimeToStr(dtToUse))
+        prep.setString(5, strategy_id)
+        prep.setDouble(6, cumUrlzdPnL)
+        prep.executeUpdate
+        _conn.commit
       }
-      prep.setString(1, symbol)
-      prep.setDouble(2, signedPos)
-      prep.setDouble(3, avgPx)
-      prep.setString(4, SUtil.convertDateTimeToStr(dtToUse))
-      prep.setString(5, strategy_id)
-      prep.setDouble(6, cumUrlzdPnL)
-      prep.executeUpdate
-    }
+    })
   }
 
   def getAllTradesOfSty(sid: String): List[TradeFeed] = {
+    val _conn = lsConn.head
 
     var results = ListBuffer[TradeFeed]()
 
@@ -461,6 +704,7 @@ object DBProcessor {
   }
 
   def closeConn(): Unit = {
-    _conn.close
+    lsConn.foreach(_.close)
   }
+
 }
