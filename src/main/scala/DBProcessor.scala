@@ -55,8 +55,10 @@ object DBProcessor {
   def deleteItrdPnLTable() {
     lsConn.foreach(_conn => {
       try {
-        val prep = _conn.prepareStatement("delete from intraday_pnl")
-        prep.executeUpdate
+        val prep1 = _conn.prepareStatement("delete from intraday_pnl")
+        prep1.executeUpdate
+        val prep2 = _conn.prepareStatement("delete from intraday_pnl_per_strategy")
+        prep2.executeUpdate
         _conn.commit
       }
     })
@@ -254,9 +256,12 @@ object DBProcessor {
   def cleanItrdPnLTbl(dt: DateTime) {
     lsConn.foreach(_conn => {
       try {
-        val prep = _conn.prepareStatement("delete from intraday_pnl where timestamp < ?")
-        prep.setString(1, SUtil.convertDateTimeToStr(dt))
-        prep.executeUpdate
+        val prep1 = _conn.prepareStatement("delete from intraday_pnl where timestamp < ?")
+        prep1.setString(1, SUtil.convertDateTimeToStr(dt))
+        prep1.executeUpdate
+        val prep2 = _conn.prepareStatement("delete from intraday_pnl_per_strategy where timestamp < ?")
+        prep2.setString(1, SUtil.convertDateTimeToStr(dt))
+        prep2.executeUpdate
         _conn.commit
       }
     })
@@ -484,26 +489,75 @@ object DBProcessor {
   }
 
   def insertPnLCalcRowToItrdPnLTbl(lsStySymPnLRow: List[(String, String, PnLCalcRow)]) {
+    val curSqlTime = SUtil.getCurrentSqlTimeStampStr(HongKong())
     lsConn.foreach(_conn => {
       try {
 
-        val prep = _conn.prepareStatement("insert into intraday_pnl (timestamp,instrument_id,realized_pnl,unrealized_pnl,total_pnl,position,strategy_id) values (?,?,?,?,?,?,?)")
+        //--------------------------------------------------
+        // with instrument breakdown
+        //--------------------------------------------------
+        val prep1 = _conn.prepareStatement("insert into intraday_pnl (timestamp,instrument_id,realized_pnl,unrealized_pnl,total_pnl,position,strategy_id) values (?,?,?,?,?,?,?)")
 
         lsStySymPnLRow.foreach {
           case (strategy_id, symbol, pnlcalcrow) => {
 
-            prep.setString(1, SUtil.getCurrentSqlTimeStampStr(HongKong()))
-            prep.setString(2, symbol)
-            prep.setDouble(3, pnlcalcrow.cumRlzdPnL)
-            prep.setDouble(4, pnlcalcrow.cumUrlzdPnL)
-            prep.setDouble(5, pnlcalcrow.cumRlzdPnL + pnlcalcrow.cumUrlzdPnL)
-            prep.setDouble(6, pnlcalcrow.cumSgndVol)
-            prep.setString(7, strategy_id)
-            prep.addBatch
+            prep1.setString(1, curSqlTime)
+            prep1.setString(2, symbol)
+            prep1.setDouble(3, pnlcalcrow.cumRlzdPnL)
+            prep1.setDouble(4, pnlcalcrow.cumUrlzdPnL)
+            prep1.setDouble(5, pnlcalcrow.cumRlzdPnL + pnlcalcrow.cumUrlzdPnL)
+            prep1.setDouble(6, pnlcalcrow.cumSgndVol)
+            prep1.setString(7, strategy_id)
+            prep1.addBatch
           }
         }
+        prep1.executeBatch
 
-        prep.executeBatch
+        //--------------------------------------------------
+        // without instrument breakdown
+        //--------------------------------------------------
+        val tupstypnlrow =
+          lsStySymPnLRow.groupBy(_._1).map {
+            case (sty, lstup) => {
+
+              (sty, lstup.map(_._3).fold(PnLCalcRow(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)) {
+                (carryOver, e) =>
+                  PnLCalcRow(
+                    carryOver.trdPx + e.trdPx,
+                    carryOver.trdVol + e.trdVol,
+                    carryOver.trdSgn + e.trdSgn,
+                    carryOver.cumSgndVol + e.cumSgndVol,
+                    carryOver.cumSgndNotlAdjChgSgn + e.cumSgndNotlAdjChgSgn,
+                    carryOver.avgPx + e.avgPx,
+                    carryOver.prdTotPnL + e.prdTotPnL,
+                    carryOver.cumTotPnL + e.cumTotPnL,
+                    carryOver.psnClosed + e.psnClosed,
+                    carryOver.rlzdPnL + e.rlzdPnL,
+                    carryOver.cumRlzdPnL + e.cumRlzdPnL,
+                    carryOver.cumUrlzdPnL + e.cumUrlzdPnL
+                  )
+              })
+
+            }
+          }
+
+        val prep2 = _conn.prepareStatement("insert into intraday_pnl_per_strategy (timestamp,realized_pnl,unrealized_pnl,total_pnl,position,strategy_id) values (?,?,?,?,?,?)")
+
+        tupstypnlrow.foreach {
+          case (strategy_id, pnlcalcrow) =>
+            {
+              prep2.setString(1, curSqlTime)
+              prep2.setDouble(2, pnlcalcrow.cumRlzdPnL)
+              prep2.setDouble(3, pnlcalcrow.cumUrlzdPnL)
+              prep2.setDouble(4, pnlcalcrow.cumRlzdPnL + pnlcalcrow.cumUrlzdPnL)
+              prep2.setDouble(5, pnlcalcrow.cumSgndVol)
+              prep2.setString(6, strategy_id)
+              prep2.addBatch
+            }
+        }
+
+        prep2.executeBatch
+
         _conn.commit
       }
     })
