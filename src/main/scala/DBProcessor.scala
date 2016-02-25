@@ -541,7 +541,7 @@ object DBProcessor {
             }
           }
 
-        val prep2 = _conn.prepareStatement("insert into intraday_pnl_per_strategy (timestamp,realized_pnl,unrealized_pnl,total_pnl,position,strategy_id) values (?,?,?,?,?,?)")
+        val prep2 = _conn.prepareStatement("insert into intraday_pnl_per_strategy (timestamp,realized_pnl,unrealized_pnl,total_pnl,strategy_id) values (?,?,?,?,?)")
 
         tupstypnlrow.foreach {
           case (strategy_id, pnlcalcrow) =>
@@ -550,8 +550,7 @@ object DBProcessor {
               prep2.setDouble(2, pnlcalcrow.cumRlzdPnL)
               prep2.setDouble(3, pnlcalcrow.cumUrlzdPnL)
               prep2.setDouble(4, pnlcalcrow.cumRlzdPnL + pnlcalcrow.cumUrlzdPnL)
-              prep2.setDouble(5, pnlcalcrow.cumSgndVol)
-              prep2.setString(6, strategy_id)
+              prep2.setString(5, strategy_id)
               prep2.addBatch
             }
         }
@@ -755,6 +754,70 @@ object DBProcessor {
       }
     }
     results.toList
+  }
+
+  def updateOrInsertTradingAccountTbl() {
+
+    //--------------------------------------------------
+    // calculate available cash
+    //--------------------------------------------------
+    val allSty = DBProcessor.getAllStyFromTradesTable
+
+    val lsTupStyCF = {
+      allSty.map(s => (s,
+        {
+          val lsCF = (DBProcessor.getAllTradesForSty(s)).map(tf => tf.trade_price * tf.trade_volume * { if (tf.trade_sign == 1) 1.0 else -1.0 })
+          lsCF.fold(0.0) { (carry, e) => carry + e }
+        }))
+    }
+
+    //--------------------------------------------------
+    lsTupStyCF.foreach {
+      case (strategy_id, cashflow) => {
+        lsConn.foreach(_conn => {
+          try {
+
+            val dtSqlStr = SUtil.convertDateTimeToStr(SUtil.getCurrentDateTime(HongKong()))
+
+            val prep1 = _conn.prepareStatement("select count(*) as cnt from trading_account where strategy_id=?")
+            val prep2 = _conn.prepareStatement("insert into trading_account (cash,avail_cash,holding_cash,timestamp,strategy_id) values (?,?,?,?,?)")
+            val prep3 = _conn.prepareStatement("update trading_account set cash=?,avail_cash=?,holding_cash=?,timestamp=? where strategy_id=?")
+
+            prep1.setString(1, strategy_id)
+
+            val rs = prep1.executeQuery
+
+            val cnt = if (rs.next) rs.getInt("cnt") else 0
+
+            if (cnt == 0) {
+              //--------------------------------------------------
+              // insert
+              //--------------------------------------------------
+              prep2.setDouble(1, Config.initCapital.get(strategy_id).getOrElse(0.0))
+              prep2.setDouble(2, Config.initCapital.get(strategy_id).getOrElse(0.0) - cashflow)
+              prep2.setDouble(3, Config.initCapital.get(strategy_id).getOrElse(0.0) - cashflow)
+              prep2.setString(4, dtSqlStr)
+              prep2.setString(5, strategy_id)
+              prep2.executeUpdate
+              _conn.commit
+            }
+            else {
+              //--------------------------------------------------
+              // update
+              //--------------------------------------------------
+              prep3.setDouble(1, Config.initCapital.get(strategy_id).getOrElse(0.0))
+              prep3.setDouble(2, Config.initCapital.get(strategy_id).getOrElse(0.0) - cashflow)
+              prep3.setDouble(3, Config.initCapital.get(strategy_id).getOrElse(0.0) - cashflow)
+              prep3.setString(4, dtSqlStr)
+              prep3.setString(5, strategy_id)
+              prep3.executeUpdate
+              _conn.commit
+            }
+
+          }
+        })
+      }
+    }
   }
 
   def closeConn(): Unit = {

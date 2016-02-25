@@ -41,6 +41,13 @@ object Config {
 
       onlyCalcPnLDuringTradingHr = prop.getProperty("onlyCalcPnLDuringTradingHr").toBoolean
 
+      availableCashUpdateIntvlInSec = prop.getProperty("availableCashUpdateIntvlInSec").toInt
+
+      //--------------------------------------------------
+      // TODO: remove the hardcoded strategy id
+      //--------------------------------------------------
+      initCapital += "B2_HK" -> prop.getProperty("initCapital_B2_HK").toDouble
+
       println(jdbcConnStr)
       println(jdbcUser)
       println(jdbcPwd)
@@ -67,9 +74,16 @@ object Config {
   var pnlCalcIntvlInSec = 300
   var itrdMktDataUpdateIntvlInSec = 300
   var timeForDailyPnLCalnHHMM = 1602
-  var mtmTime: LocalTime = new LocalTime(0,0)
+  var mtmTime: LocalTime = new LocalTime(0, 0)
   var ldStartCalcPnL: LocalDate = new LocalDate(2016, 1, 1)
   var onlyCalcPnLDuringTradingHr: Boolean = true
+
+  //--------------------------------------------------
+  // initial capital
+  //--------------------------------------------------
+  var initCapital = Map[String, Double]()
+var availableCashUpdateIntvlInSec = 5
+
 
   //--------------------------------------------------
   // JDBC

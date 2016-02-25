@@ -268,7 +268,7 @@ object StrategyEngine {
 
             }
 
-            Thread.sleep(Config.pnlCalcIntvlInSec)
+            Thread.sleep(20)
           }
 
         }
@@ -283,20 +283,35 @@ object StrategyEngine {
             DBProcessor.cleanMarketDataInItrdTbl(dtcutoff)
             DBProcessor.cleanItrdPnLTbl(dtcutoff)
 
-            Thread.sleep(60)
+            Thread.sleep(30 * 60 * 1000)
           }
           println("Thread thdCleanData ends...")
 
         }
       })
+
+      val thdCalcAvailableCash = new Thread(new Runnable {
+
+        def run() {
+
+          while (true) {
+            DBProcessor.updateOrInsertTradingAccountTbl
+            Thread.sleep(Config.availableCashUpdateIntvlInSec * 1000)
+          }
+          println("Thread thdCalcAvailableCash ends...")
+
+        }
+      })
+
       //--------------------------------------------------
       thdTFHandler.start
       thdMDHandler.start
       thdPnLCalculator.start
       thdCleanData.start
+      thdCalcAvailableCash.start
 
       while (true) {
-        Thread.sleep(2000);
+        Thread.sleep(10000);
       }
       //--------------------------------------------------
 
