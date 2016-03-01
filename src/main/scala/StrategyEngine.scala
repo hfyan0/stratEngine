@@ -141,7 +141,7 @@ object StrategyEngine {
             val request = socket.recv(0)
 
             val recvdStr = new String(request, 0, request.length)
-            println("Received MD: [" + recvdStr + "]")
+            // println("Received MD: [" + recvdStr + "]")
             //--------------------------------------------------
             // insert into database only at a certain time interval
             //--------------------------------------------------

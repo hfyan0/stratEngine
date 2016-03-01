@@ -761,7 +761,7 @@ object DBProcessor {
     //--------------------------------------------------
     // calculate available cash
     //--------------------------------------------------
-    val allSty = DBProcessor.getAllStyFromTradesTable
+    val allSty = DBProcessor.getAllStyFromTradesTable.filter(Config.initCapital.contains(_))
 
     val lsTupStyCF = {
       allSty.map(s => (s,

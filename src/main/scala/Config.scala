@@ -44,9 +44,11 @@ object Config {
       availableCashUpdateIntvlInSec = prop.getProperty("availableCashUpdateIntvlInSec").toInt
 
       //--------------------------------------------------
-      // TODO: remove the hardcoded strategy id
+      styIDToMaintainTradingAccount = prop.getProperty("styIDToMaintainTradingAccount").split(",").toList
+      styIDToMaintainTradingAccount.foreach(s => {
+        initCapital += s -> prop.getProperty("initCapital_" + s).toDouble
+      })
       //--------------------------------------------------
-      initCapital += "B2_HK" -> prop.getProperty("initCapital_B2_HK").toDouble
 
       println(jdbcConnStr)
       println(jdbcUser)
@@ -82,8 +84,8 @@ object Config {
   // initial capital
   //--------------------------------------------------
   var initCapital = Map[String, Double]()
-var availableCashUpdateIntvlInSec = 5
-
+  var availableCashUpdateIntvlInSec = 5
+  var styIDToMaintainTradingAccount = List[String]()
 
   //--------------------------------------------------
   // JDBC
