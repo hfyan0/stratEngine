@@ -129,15 +129,18 @@ object DBProcessor {
             //--------------------------------------------------
             // signals table
             //--------------------------------------------------
-            val prep = _conn.prepareStatement("insert into signals (status,timestamp,instrument_id,buy_sell,price,volume,comment,strategy_id) values (?,?,?,?,?,?,?,?) ")
+            val ts = SUtil.convertTimestampFmt1(csvFields(0))
+            val prep = _conn.prepareStatement("insert into signals (status,timestamp,instrument_id,buy_sell,price,volume,comment,strategy_id,update_timestamp,signal_timestamp) values (?,?,?,?,?,?,?,?,?,?) ")
             prep.setInt(1, 0) // states
-            prep.setString(2, SUtil.convertTimestampFmt1(csvFields(0))) //timestamp
+            prep.setString(2, ts) //timestamp
             prep.setString(3, csvFields(3).toString) // instrument_id
             prep.setDouble(4, csvFields(7).toDouble) // buy_sell
             prep.setDouble(5, csvFields(5).toDouble) // price
             prep.setDouble(6, csvFields(6).toDouble) // volume
             prep.setString(7, csvFields(4)) // comment
             prep.setString(8, csvFields(10)) // strategy_id
+            prep.setString(9, ts) // update_timestamp
+            prep.setString(10, ts) // signal_timestamp
             prep.executeUpdate
             _conn.commit
           }
@@ -174,20 +177,23 @@ object DBProcessor {
     })
   }
 
-  def insertMarketDataToItrdTbl(sMarketFeed: String) {
+  def insertMarketDataToItrdTbl(lsSymPrice: List[(String, (DateTime, Double))]) {
     lsConn.foreach(_conn => {
       try {
+        val prep = _conn.prepareStatement("insert into market_data_intraday (timestamp,instrument_id,nominal_price) values (?,?,?)")
 
-        val (bIsMFValid, mfnominal) = SUtil.parseMarketFeedNominal(sMarketFeed)
-        if (bIsMFValid) {
-          val prep = _conn.prepareStatement("insert into market_data_intraday (timestamp,instrument_id,nominal_price) values (?,?,?)")
-
-          prep.setString(1, SUtil.convertDateTimeToStr(mfnominal.datetime))
-          prep.setString(2, mfnominal.symbol)
-          prep.setDouble(3, mfnominal.nominal_price)
-          prep.executeUpdate
-          _conn.commit
+        lsSymPrice.foreach {
+          case (symbol, (datetime, nominalprice)) =>
+            {
+              prep.setString(1, SUtil.convertDateTimeToStr(datetime))
+              prep.setString(2, symbol)
+              prep.setDouble(3, nominalprice)
+              prep.addBatch()
+            }
         }
+
+        prep.executeBatch
+        _conn.commit
       }
     })
   }
@@ -267,12 +273,46 @@ object DBProcessor {
     })
   }
 
-  def getNominalPricesAsAt(asOfDate: DateTime, symbol: String): Map[String, Double] = {
+  def getNominalPricesAsAt(asOfDate: DateTime, symbol: String, mdinmemory: Map[String, (DateTime, Double)], mdfromdb: List[(String, DateTime, Double)]): Map[String, Double] = {
+
+    var symbols = mdinmemory.map { case (symbol, (_, _)) => symbol }.toList
+    symbols :::= mdfromdb.map { case (symbol, _, _) => symbol }.toList
+    symbols = symbols.distinct
+
+    //--------------------------------------------------
+    // combine market date from memory and from database
+    //--------------------------------------------------
+    val lsTup3 = mdinmemory.map { case (symbol, (datetime, nominal_price)) => (symbol, datetime, nominal_price) }.toList ::: mdfromdb
+
+    //--------------------------------------------------
+    // filter with timestamp and group by symbols
+    //--------------------------------------------------
+    val mapSymTup3 = lsTup3.filter(_._2.getMillis <= asOfDate.getMillis).groupBy(_._1)
+
+    val lsResult = mapSymTup3.map {
+      case (symbol, lstup3) => {
+        //--------------------------------------------------
+        // sort first!
+        //--------------------------------------------------
+        lstup3.sortWith(_._2.getMillis > _._2.getMillis) match {
+          case Nil     => (symbol, new DateTime(), 0.0)
+          case x :: xs => x
+        }
+      }
+    }
+
+    var res_map = Map[String, Double]()
+
+    lsResult.foreach(t => res_map += (t._1 -> t._3))
+
+    res_map
+  }
+
+  def getNominalPricesFromDBAsAt(asOfDate: DateTime): List[(String, DateTime, Double)] = {
     val _conn = lsConn.head
 
+    var symbols = List[String]()
     var results = List[(String, DateTime, Double)]()
-    var symbols = Set[String]()
-    var res_map = Map[String, Double]()
 
     //--------------------------------------------------
     // just be safe, make sure we can get the latest price, in case the clocks don't perfectly sync
@@ -281,83 +321,141 @@ object DBProcessor {
     val asOfDateStr = SUtil.convertDateTimeToStr(asOfDateModified)
 
     //--------------------------------------------------
-    // from intraday table
+    // get all symbols first
     //--------------------------------------------------
     try {
       val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
 
-      val prep = _conn.prepareStatement("select timestamp,instrument_id,nominal_price from market_data_intraday where timestamp <= ? and instrument_id = ? order by timestamp desc limit 2")
-      prep.setString(1, asOfDateStr)
-      prep.setString(2, symbol)
+      val prep = _conn.prepareStatement("select distinct instrument_id from market_data_daily_hk_stock")
       val rs = prep.executeQuery()
 
       while (rs.next) {
-
-        val symbol = rs.getString("instrument_id")
-        val datetime = SUtil.convertMySQLTSToDateTime(rs.getString("timestamp"))
-        val nominal_price = rs.getDouble("nominal_price")
-
-        symbols += symbol
-        results ::= (symbol, datetime, nominal_price)
-      }
-    }
-    //--------------------------------------------------
-    // from hourly table
-    //--------------------------------------------------
-    try {
-      val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
-
-      val prep = _conn.prepareStatement("select timestamp,instrument_id,close from market_data_hourly_hk_stock where timestamp <= ? and instrument_id = ? order by timestamp desc limit 2")
-      prep.setString(1, asOfDateStr)
-      prep.setString(2, symbol)
-      val rs = prep.executeQuery()
-
-      while (rs.next) {
-
-        val symbol = rs.getString("instrument_id")
-        val datetime = SUtil.convertMySQLTSToDateTime(rs.getString("timestamp"))
-        val close = rs.getDouble("close")
-
-        symbols += symbol
-        results ::= (symbol, datetime, close)
-      }
-    }
-    //--------------------------------------------------
-    // from daily table
-    //--------------------------------------------------
-    try {
-      val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
-
-      val prep = _conn.prepareStatement("select timestamp,instrument_id,close from market_data_daily_hk_stock where timestamp <= ? and instrument_id = ? order by timestamp desc limit 2")
-      prep.setString(1, asOfDateStr)
-      prep.setString(2, symbol)
-      val rs = prep.executeQuery()
-
-      while (rs.next) {
-
-        val symbol = rs.getString("instrument_id")
-        val datetime = SUtil.convertMySQLTSToDateTime(rs.getString("timestamp"))
-        val close = rs.getDouble("close")
-
-        symbols += symbol
-        results ::= (symbol, datetime, close)
+        symbols ::= rs.getString("instrument_id")
       }
     }
 
-    //--------------------------------------------------
-    // sort all the obtained prices
-    //--------------------------------------------------
-    val res_1 = results.filter(_._2.getMillis <= asOfDateModified.getMillis)
+    symbols.foreach { symbol =>
+      {
+        //--------------------------------------------------
+        // from intraday table
+        //--------------------------------------------------
+        try {
+          val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
 
-    val res_list = symbols.map(sym => res_1.filter(_._1 == sym).sortWith(_._2.getMillis > _._2.getMillis) match {
-      case Nil     => (sym, new DateTime(), 0.0)
-      case x :: xs => x
-    })
-    res_list.foreach(t => res_map += (t._1 -> t._3))
+          val prep = _conn.prepareStatement("select timestamp,instrument_id,nominal_price from market_data_intraday where timestamp <= ? and instrument_id = ? order by timestamp desc limit 2")
+          prep.setString(1, asOfDateStr)
+          prep.setString(2, symbol)
+          val rs = prep.executeQuery()
 
-    res_map
+          while (rs.next) {
+
+            val symbol = rs.getString("instrument_id")
+            val datetime = SUtil.convertMySQLTSToDateTime(rs.getString("timestamp"))
+            val nominal_price = rs.getDouble("nominal_price")
+
+            results ::= (symbol, datetime, nominal_price)
+          }
+        }
+        // //--------------------------------------------------
+        // // from hourly table
+        // //--------------------------------------------------
+        // try {
+        //   val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
+        //
+        //   val prep = _conn.prepareStatement("select timestamp,instrument_id,close from market_data_hourly_hk_stock where timestamp <= ? and instrument_id = ? order by timestamp desc limit 2")
+        //   prep.setString(1, asOfDateStr)
+        //   prep.setString(2, symbol)
+        //   val rs = prep.executeQuery()
+        //
+        //   while (rs.next) {
+        //
+        //     val symbol = rs.getString("instrument_id")
+        //     val datetime = SUtil.convertMySQLTSToDateTime(rs.getString("timestamp"))
+        //     val close = rs.getDouble("close")
+        //
+        //     results ::= (symbol, datetime, close)
+        //   }
+        // }
+        //--------------------------------------------------
+        // from daily table
+        //--------------------------------------------------
+        try {
+          val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
+
+          val prep = _conn.prepareStatement("select timestamp,instrument_id,close from market_data_daily_hk_stock where timestamp <= ? and instrument_id = ? order by timestamp desc limit 2")
+          prep.setString(1, asOfDateStr)
+          prep.setString(2, symbol)
+          val rs = prep.executeQuery()
+
+          while (rs.next) {
+
+            val symbol = rs.getString("instrument_id")
+            val datetime = SUtil.convertMySQLTSToDateTime(rs.getString("timestamp"))
+            val close = rs.getDouble("close")
+
+            results ::= (symbol, datetime, close)
+          }
+        }
+      }
+    }
+
+    results
   }
 
+  def getSymFromPortfolioTbl(strategy_id: String): List[String] = {
+    val _conn = lsConn.head
+
+    var results = List[String]()
+
+    try {
+      val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
+
+      val prep = _conn.prepareStatement("select distinct instrument_id from portfolios where strategy_id=?")
+      prep.setString(1, strategy_id)
+      val rs = prep.executeQuery()
+
+      while (rs.next) {
+        results ::= rs.getString("instrument_id")
+      }
+    }
+    results
+  }
+  def getSymFromPortfolioTblWithZeroPos(strategy_id: String): List[String] = {
+    val _conn = lsConn.head
+
+    var results = List[String]()
+
+    try {
+      val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
+
+      val prep = _conn.prepareStatement("select distinct instrument_id from portfolios where strategy_id=? and volume=0")
+      prep.setString(1, strategy_id)
+      val rs = prep.executeQuery()
+
+      while (rs.next) {
+        results ::= rs.getString("instrument_id")
+      }
+    }
+    results
+  }
+  def getSymFromTradeTbl(strategy_id: String): List[String] = {
+    val _conn = lsConn.head
+
+    var results = List[String]()
+
+    try {
+      val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
+
+      val prep = _conn.prepareStatement("select distinct instrument_id from trades where strategy_id=?")
+      prep.setString(1, strategy_id)
+      val rs = prep.executeQuery()
+
+      while (rs.next) {
+        results ::= rs.getString("instrument_id")
+      }
+    }
+    results
+  }
   def getTotalPnLOfSty(strategy_id: String): Double = {
     val _conn = lsConn.head
 
@@ -636,6 +734,34 @@ object DBProcessor {
 
         prep.executeBatch
         _conn.commit
+      }
+    })
+  }
+
+  def removeSymFromPortfolioTbl() {
+    lsConn.foreach(_conn => {
+      try {
+        //--------------------------------------------------
+        // remove symbols that have no tradefeed
+        //--------------------------------------------------
+        val allSty = DBProcessor.getAllStyFromTradesTable
+
+        allSty.foreach(strategy_id => {
+          val lsSymInPortfolios = getSymFromPortfolioTbl(strategy_id)
+          val lsSymInTrades = getSymFromTradeTbl(strategy_id)
+          val lsUnwantedSym = lsSymInPortfolios.filter(!lsSymInTrades.contains(_))
+
+          lsUnwantedSym.foreach(deletePortfolioTableWithStratIDSym(strategy_id, _))
+        })
+
+        //--------------------------------------------------
+        // remove symbols that have zero position
+        //--------------------------------------------------
+        allSty.foreach(strategy_id => {
+          val lsUnwantedSym = DBProcessor.getSymFromPortfolioTblWithZeroPos(strategy_id)
+          lsUnwantedSym.foreach(deletePortfolioTableWithStratIDSym(strategy_id, _))
+        })
+
       }
     })
   }

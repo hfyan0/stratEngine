@@ -10,7 +10,7 @@ import org.joda.time.{Period, DateTime, Duration, LocalTime, Minutes}
 
 object StrategyEngine {
 
-  def calcMtmPnL(asOfDate: DateTime): List[(String, String, PnLCalcRow)] = {
+  def calcMtmPnL(asOfDate: DateTime, mdinmemory: Map[String, (DateTime, Double)], mdfromdb: List[(String, DateTime, Double)]): List[(String, String, PnLCalcRow)] = {
     var return_list = List[(String, String, PnLCalcRow)]()
 
     val allSty = DBProcessor.getAllStyFromTradesTable
@@ -89,7 +89,7 @@ object StrategyEngine {
           pnlcalcrow
         }
 
-        val latestNominalPx = DBProcessor.getNominalPricesAsAt(asOfDate, sym)
+        val latestNominalPx = DBProcessor.getNominalPricesAsAt(asOfDate, sym, mdinmemory, mdfromdb)
         listpnlcalctbl match {
           case Nil => Nil
           case _ =>
@@ -115,206 +115,212 @@ object StrategyEngine {
 
   }
 
-  def main(args: Array[String]) =
-    {
-      println("StrategyEngine starts...")
-      if (args.length < 1) {
-        println("Please provide the property file as the input argument")
-        System.exit(1)
-      }
-      println("Using property file: " + args(0))
-      Config.readPropFile(args(0))
-
-      //--------------------------------------------------
-      val thdMDHandler = new Thread(new Runnable {
-        def run() {
-
-          var map_pt = Map[String, PeriodicTask]() // symbol - PeriodicTask
-
-          //  Prepare our context and socket
-          val context = ZMQ.context(1)
-          // val socket = context.socket(ZMQ.REP)
-          val socket = context.socket(ZMQ.PULL)
-          socket.bind(Config.zmqMDConnStr)
-
-          while (true) {
-            val request = socket.recv(0)
-
-            val recvdStr = new String(request, 0, request.length)
-            // println("Received MD: [" + recvdStr + "]")
-            //--------------------------------------------------
-            // insert into database only at a certain time interval
-            //--------------------------------------------------
-            val (parseRes, mfnominal) = SUtil.parseMarketFeedNominal(recvdStr)
-            if (parseRes) {
-              if (!map_pt.contains(mfnominal.symbol)) {
-                map_pt += mfnominal.symbol -> new PeriodicTask(Config.itrdMktDataUpdateIntvlInSec)
-              }
-
-              if (map_pt(mfnominal.symbol).checkIfItIsTimeToWakeUp(SUtil.getCurrentDateTime(HongKong()))) {
-                DBProcessor.insertMarketDataToItrdTbl(recvdStr)
-                // //--------------------------------------------------
-                // // TODO not the real code for daily and hourly bars right now
-                // //--------------------------------------------------
-                // DBProcessor.insertMarketDataToHourlyTbl(recvdStr)
-                // DBProcessor.insertMarketDataToDailyTbl(recvdStr)
-              }
-            }
-
-            // //--------------------------------------------------
-            // // send ack through zmq
-            // //--------------------------------------------------
-            // val reply = "OK ".getBytes
-            // reply(reply.length - 1) = 0 //Sets the last byte of the reply to 0
-            // socket.send(reply, 0)
-            // //--------------------------------------------------
-          }
-          println("Thread thdMDHandler ends...")
-
-        }
-      })
-
-      val thdTFHandler = new Thread(new Runnable {
-
-        def run() {
-
-          //  Prepare our context and socket
-          val context = ZMQ.context(1)
-          // val socket = context.socket(ZMQ.REP)
-          val socket = context.socket(ZMQ.PULL)
-          socket.bind(Config.zmqTFConnStr)
-
-          while (true) {
-            val request = socket.recv(0)
-
-            val recvdStr = new String(request, 0, request.length)
-            println("Received TF: [" + recvdStr + "]")
-            DBProcessor.insertTradeFeedToDB(recvdStr)
-
-            // //--------------------------------------------------
-            // // send ack through zmq
-            // //--------------------------------------------------
-            // val reply = "OK ".getBytes
-            // reply(reply.length - 1) = 0 //Sets the last byte of the reply to 0
-            // socket.send(reply, 0)
-            // //--------------------------------------------------
-          }
-          println("Thread thdTFHandler ends...")
-
-        }
-      })
-
-      val thdPnLCalculator = new Thread(new Runnable {
-
-        var pt = new PeriodicTask(Config.pnlCalcIntvlInSec)
-
-        def run() {
-
-          while (true) {
-            val curHKTime = SUtil.getCurrentDateTime(HongKong())
-
-            if (pt.checkIfItIsTimeToWakeUp(curHKTime) && (!Config.onlyCalcPnLDuringTradingHr || TradingHours.isTradingHour("HKSTK", curHKTime))) {
-              //--------------------------------------------------
-              // continuously calculate the latest intraday PnL
-              // then insert into PnL table and portfolio table
-              //--------------------------------------------------
-              val lsStySymPnLRow = calcMtmPnL(SUtil.getCurrentDateTime(HongKong()))
-
-              DBProcessor.insertPnLCalcRowToItrdPnLTbl(lsStySymPnLRow)
-              DBProcessor.updateOrInsertPortfolioTbl(None, lsStySymPnLRow)
-
-              // DBProcessor.deletePortfolioTable(lsStySymPnLRow)
-              // DBProcessor.insertPortfolioTbl(None, lsStySymPnLRow)
-
-              // lsStySymPnLRow.foreach {
-              //   case (x, y, z) => {
-              //     DBProcessor.insertPnLCalcRowToItrdPnLTbl(x, y, z)
-              //     DBProcessor.deletePortfolioTableWithStratIDSym(x, y)
-              //     DBProcessor.insertPortfolioTbl(None, x, y, z.cumSgndVol, z.avgPx, z.cumUrlzdPnL)
-              //   }
-              // }
-
-              //--------------------------------------------------
-              // check whether daily PnL should be updated
-              // should update for all days up till today
-              // then insert into PnL table and portfolio table
-              //--------------------------------------------------
-              val dt_last_daily_pnl = DBProcessor.getLastDateTimeInDailyPnLTbl
-              val curLD = SUtil.getCurrentDateTime(HongKong()).toLocalDate()
-              val curLT = SUtil.getCurrentDateTime(HongKong()).toLocalTime()
-              val minFromMTM = Minutes.minutesBetween(curLT, Config.mtmTime).getMinutes()
-
-              val lsDateTimesInRange = {
-                val uptoLD = { if (minFromMTM > 0) curLD.minusDays(1) else curLD }
-
-                if (dt_last_daily_pnl == None)
-                  SUtil.getListOfDatesWithinRange(Config.ldStartCalcPnL, uptoLD, Config.mtmTime)
-                else
-                  SUtil.getListOfDatesWithinRange(dt_last_daily_pnl.get.plusDays(1).toLocalDate(), uptoLD, Config.mtmTime)
-              }
-
-              lsDateTimesInRange.foreach(dtInRng => DBProcessor.insertPnLCalcRowToDailyPnLTbl(Some(dtInRng), calcMtmPnL(dtInRng)))
-
-              // lsDateTimesInRange.foreach(
-              //   dtInRng => calcMtmPnL(dtInRng).foreach {
-              //       case (x, y, z) => {
-              //         DBProcessor.insertPnLCalcRowToDailyPnLTbl(Some(dtInRng), x, y, z)
-              //         //--------------------------------------------------
-              //         // portfolios table only contains the latest snapshot, so no need to update here
-              //         //--------------------------------------------------
-              //       }
-              //     }
-              // )
-
-            }
-
-            Thread.sleep(20)
-          }
-
-        }
-      })
-
-      val thdCleanData = new Thread(new Runnable {
-
-        def run() {
-
-          while (true) {
-            val dtcutoff = SUtil.getCurrentDateTime(HongKong()).minusDays(2)
-            DBProcessor.cleanMarketDataInItrdTbl(dtcutoff)
-            DBProcessor.cleanItrdPnLTbl(dtcutoff)
-
-            Thread.sleep(30 * 60 * 1000)
-          }
-          println("Thread thdCleanData ends...")
-
-        }
-      })
-
-      val thdCalcAvailableCash = new Thread(new Runnable {
-
-        def run() {
-
-          while (true) {
-            DBProcessor.updateOrInsertTradingAccountTbl
-            Thread.sleep(Config.availableCashUpdateIntvlInSec * 1000)
-          }
-          println("Thread thdCalcAvailableCash ends...")
-
-        }
-      })
-
-      //--------------------------------------------------
-      thdTFHandler.start
-      thdMDHandler.start
-      thdPnLCalculator.start
-      thdCleanData.start
-      thdCalcAvailableCash.start
-
-      while (true) {
-        Thread.sleep(10000);
-      }
-      //--------------------------------------------------
-
-      println("StrategyEngine ends...")
+  def main(args: Array[String]) = {
+    println("StrategyEngine starts...")
+    if (args.length < 1) {
+      println("Please provide the property file as the input argument")
+      System.exit(1)
     }
+    println("Using property file: " + args(0))
+    Config.readPropFile(args(0))
+
+    //--------------------------------------------------
+    // initialize with prices from database
+    //--------------------------------------------------
+    println(SUtil.getCurrentDateTime(HongKong()) + ": starting initialization")
+    val mdFromDB = DBProcessor.getNominalPricesFromDBAsAt(SUtil.getCurrentDateTime(HongKong()))
+    var mdInMemory = Map[String, (DateTime, Double)]()
+    println(SUtil.getCurrentDateTime(HongKong()) + ": finished initialization")
+
+    //--------------------------------------------------
+    val thdMDHandler = new Thread(new Runnable {
+      def run() {
+
+        //  Prepare our context and socket
+        val context = ZMQ.context(1)
+        // val socket = context.socket(ZMQ.REP)
+        val socket = context.socket(ZMQ.PULL)
+        socket.bind(Config.zmqMDConnStr)
+
+        while (true) {
+          val request = socket.recv(0)
+
+          val recvdStr = new String(request, 0, request.length)
+          //--------------------------------------------------
+          // insert into database only at a certain time interval
+          //--------------------------------------------------
+          val (parseRes, mfnominal) = SUtil.parseMarketFeedNominal(recvdStr)
+          if (parseRes) {
+            val (bIsMFValid, mfnominal) = SUtil.parseMarketFeedNominal(recvdStr)
+            if (bIsMFValid) mdInMemory += mfnominal.symbol -> (mfnominal.datetime, mfnominal.nominal_price)
+
+            // DBProcessor.insertMarketDataToItrdTbl(recvdStr)
+            // //--------------------------------------------------
+            // // TODO not the real code for daily and hourly bars right now
+            // //--------------------------------------------------
+            // DBProcessor.insertMarketDataToHourlyTbl(recvdStr)
+            // DBProcessor.insertMarketDataToDailyTbl(recvdStr)
+          }
+
+          // //--------------------------------------------------
+          // // send ack through zmq
+          // //--------------------------------------------------
+          // val reply = "OK ".getBytes
+          // reply(reply.length - 1) = 0 //Sets the last byte of the reply to 0
+          // socket.send(reply, 0)
+          // //--------------------------------------------------
+        }
+        println("Thread thdMDHandler ends...")
+
+      }
+    })
+
+    val thdWriteMDToDB = new Thread(new Runnable {
+      def run() {
+
+        var pt = new PeriodicTask(Config.MDPersistIntervalInSec)
+        var lastNoCongestionTime = SUtil.getCurrentDateTime(HongKong())
+        while (true) {
+          val curHKTime = SUtil.getCurrentDateTime(HongKong())
+          if (pt.checkIfItIsTimeToWakeUp(curHKTime)) {
+            DBProcessor.insertMarketDataToItrdTbl(mdInMemory.toList)
+          }
+          else {
+            lastNoCongestionTime = curHKTime
+          }
+          if (curHKTime.getMillis - lastNoCongestionTime.getMillis > Config.CongestionThresholdInSec * 1000) println("Congestion occurs in thdWriteMDToDB." + curHKTime)
+        }
+        println("Thread thdWriteMDToDB ends...")
+      }
+    })
+
+    val thdTFHandler = new Thread(new Runnable {
+
+      def run() {
+
+        //  Prepare our context and socket
+        val context = ZMQ.context(1)
+        // val socket = context.socket(ZMQ.REP)
+        val socket = context.socket(ZMQ.PULL)
+        socket.bind(Config.zmqTFConnStr)
+
+        while (true) {
+          val request = socket.recv(0)
+
+          val recvdStr = new String(request, 0, request.length)
+          println("Received TF: [" + recvdStr + "]")
+          DBProcessor.insertTradeFeedToDB(recvdStr)
+
+          // //--------------------------------------------------
+          // // send ack through zmq
+          // //--------------------------------------------------
+          // val reply = "OK ".getBytes
+          // reply(reply.length - 1) = 0 //Sets the last byte of the reply to 0
+          // socket.send(reply, 0)
+          // //--------------------------------------------------
+        }
+        println("Thread thdTFHandler ends...")
+
+      }
+    })
+
+    val thdPnLCalculator = new Thread(new Runnable {
+
+      var pt = new PeriodicTask(Config.pnlCalcIntvlInSec)
+      var lastNoCongestionTime = SUtil.getCurrentDateTime(HongKong())
+
+      def run() {
+
+        while (true) {
+          val curHKTime = SUtil.getCurrentDateTime(HongKong())
+
+          if (pt.checkIfItIsTimeToWakeUp(curHKTime) && (!Config.onlyCalcPnLDuringTradingHr || TradingHours.isTradingHour("HKSTK", curHKTime))) {
+            //--------------------------------------------------
+            // continuously calculate the latest intraday PnL
+            // then insert into PnL table and portfolio table
+            //--------------------------------------------------
+            val lsStySymPnLRow = calcMtmPnL(SUtil.getCurrentDateTime(HongKong()), mdInMemory, mdFromDB)
+
+            DBProcessor.insertPnLCalcRowToItrdPnLTbl(lsStySymPnLRow)
+            DBProcessor.updateOrInsertPortfolioTbl(None, lsStySymPnLRow)
+            DBProcessor.removeSymFromPortfolioTbl()
+
+            //--------------------------------------------------
+            // check whether daily PnL should be updated
+            // should update for all days up till today
+            // then insert into PnL table and portfolio table
+            //--------------------------------------------------
+            val dt_last_daily_pnl = DBProcessor.getLastDateTimeInDailyPnLTbl
+            val curLD = SUtil.getCurrentDateTime(HongKong()).toLocalDate()
+            val curLT = SUtil.getCurrentDateTime(HongKong()).toLocalTime()
+            val minFromMTM = Minutes.minutesBetween(curLT, Config.mtmTime).getMinutes()
+
+            val lsDateTimesInRange = {
+              val uptoLD = { if (minFromMTM > 0) curLD.minusDays(1) else curLD }
+
+              if (dt_last_daily_pnl == None)
+                SUtil.getListOfDatesWithinRange(Config.ldStartCalcPnL, uptoLD, Config.mtmTime)
+              else
+                SUtil.getListOfDatesWithinRange(dt_last_daily_pnl.get.plusDays(1).toLocalDate(), uptoLD, Config.mtmTime)
+            }
+
+            lsDateTimesInRange.foreach(dtInRng =>
+              DBProcessor.insertPnLCalcRowToDailyPnLTbl(Some(dtInRng), calcMtmPnL(dtInRng, Map[String, (DateTime, Double)](), DBProcessor.getNominalPricesFromDBAsAt(dtInRng))))
+
+          }
+          else {
+            lastNoCongestionTime = curHKTime
+          }
+          if (curHKTime.getMillis - lastNoCongestionTime.getMillis > Config.CongestionThresholdInSec * 1000) println("Congestion occurs in thdPnLCalculator." + curHKTime)
+
+          Thread.sleep(20)
+        }
+
+      }
+    })
+
+    val thdCleanData = new Thread(new Runnable {
+
+      def run() {
+
+        while (true) {
+          val dtcutoff = SUtil.getCurrentDateTime(HongKong()).minusDays(2)
+          DBProcessor.cleanMarketDataInItrdTbl(dtcutoff)
+          DBProcessor.cleanItrdPnLTbl(dtcutoff)
+
+          Thread.sleep(30 * 60 * 1000)
+        }
+        println("Thread thdCleanData ends...")
+
+      }
+    })
+
+    val thdCalcAvailableCash = new Thread(new Runnable {
+
+      def run() {
+
+        while (true) {
+          DBProcessor.updateOrInsertTradingAccountTbl
+          Thread.sleep(Config.availableCashUpdateIntvlInSec * 1000)
+        }
+        println("Thread thdCalcAvailableCash ends...")
+
+      }
+    })
+
+    //--------------------------------------------------
+    thdTFHandler.start
+    thdMDHandler.start
+    thdWriteMDToDB.start
+    thdPnLCalculator.start
+    thdCleanData.start
+    thdCalcAvailableCash.start
+
+    while (true) {
+      Thread.sleep(10000);
+    }
+    //--------------------------------------------------
+
+    println("StrategyEngine ends...")
+  }
 }

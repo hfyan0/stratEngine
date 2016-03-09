@@ -100,4 +100,10 @@ object Config {
   var zmqMDConnStr = ""
   var zmqTFConnStr = ""
 
+  //--------------------------------------------------
+  // persist MD to DB
+  //--------------------------------------------------
+  var MDPersistIntervalInSec = 300
+  var CongestionThresholdInSec = 10
+
 }
