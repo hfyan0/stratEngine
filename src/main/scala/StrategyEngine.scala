@@ -242,8 +242,20 @@ object StrategyEngine {
             val lsStySymPnLRow = calcMtmPnL(SUtil.getCurrentDateTime(HongKong()), mdInMemory, mdFromDB)
 
             DBProcessor.insertPnLCalcRowToItrdPnLTbl(lsStySymPnLRow)
-            DBProcessor.updateOrInsertPortfolioTbl(None, lsStySymPnLRow)
+            DBProcessor.updateOrInsertPortfolioTbl(None, lsStySymPnLRow, mdInMemory, mdFromDB)
             DBProcessor.removeSymFromPortfolioTbl()
+
+            //--------------------------------------------------
+            // trading account
+            //--------------------------------------------------
+            val mapStyRlzdPnL = lsStySymPnLRow.groupBy(_._1).map {
+              case (sty, ls_tup_ssp) => {
+                val totRlzdPnL = ls_tup_ssp.foldLeft(0.0) { (carryOver, tup_ssp) => carryOver + tup_ssp._3.cumRlzdPnL }
+                (sty, totRlzdPnL)
+              }
+            }.toMap
+            DBProcessor.updateOrInsertTradingAccountTbl(mapStyRlzdPnL)
+            //--------------------------------------------------
 
             //--------------------------------------------------
             // check whether daily PnL should be updated
@@ -295,26 +307,12 @@ object StrategyEngine {
       }
     })
 
-    val thdCalcAvailableCash = new Thread(new Runnable {
-
-      def run() {
-
-        while (true) {
-          DBProcessor.updateOrInsertTradingAccountTbl
-          Thread.sleep(Config.availableCashUpdateIntvlInSec * 1000)
-        }
-        println("Thread thdCalcAvailableCash ends...")
-
-      }
-    })
-
     //--------------------------------------------------
     thdTFHandler.start
     thdMDHandler.start
     thdWriteMDToDB.start
     thdPnLCalculator.start
     thdCleanData.start
-    thdCalcAvailableCash.start
 
     while (true) {
       Thread.sleep(10000);

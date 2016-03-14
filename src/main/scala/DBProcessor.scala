@@ -766,7 +766,7 @@ object DBProcessor {
     })
   }
 
-  def updateOrInsertPortfolioTbl(dt: Option[DateTime], lsStySymPnLRow: List[(String, String, PnLCalcRow)]) {
+  def updateOrInsertPortfolioTbl(dt: Option[DateTime], lsStySymPnLRow: List[(String, String, PnLCalcRow)], mdinmemory: Map[String, (DateTime, Double)], mdfromdb: List[(String, DateTime, Double)]) {
     lsConn.foreach(_conn => {
       try {
 
@@ -776,11 +776,23 @@ object DBProcessor {
         }
 
         val prep1 = _conn.prepareStatement("select count(*) as cnt from portfolios where strategy_id=? and instrument_id=?")
-        val prep2 = _conn.prepareStatement("insert into portfolios (instrument_id,volume,avg_price,timestamp,strategy_id,unrealized_pnl) values (?,?,?,?,?,?)")
-        val prep3 = _conn.prepareStatement("update portfolios set volume=?,avg_price=?,timestamp=?,unrealized_pnl=? where strategy_id=? and instrument_id=?")
+        val prep2 = _conn.prepareStatement("insert into portfolios (instrument_id,volume,avg_price,timestamp,strategy_id,unrealized_pnl,market_value) values (?,?,?,?,?,?,?)")
+        val prep3 = _conn.prepareStatement("update portfolios set volume=?,avg_price=?,timestamp=?,unrealized_pnl=?,market_value=? where strategy_id=? and instrument_id=?")
 
         lsStySymPnLRow.foreach {
           case (strategy_id, symbol, pnlcalcrow) => {
+
+            val price = mdinmemory.get(symbol) match {
+              case None => {
+                mdfromdb.filter(_._1 == symbol).lift(0) match {
+                  case None            => 0.0
+                  case Some((_, _, p)) => p
+                  case _               => 0.0
+                }
+              }
+              case Some((_, p)) => p
+              case _            => 0.0
+            }
 
             prep1.setString(1, strategy_id)
             prep1.setString(2, symbol)
@@ -799,6 +811,7 @@ object DBProcessor {
               prep2.setString(4, SUtil.convertDateTimeToStr(dtToUse))
               prep2.setString(5, strategy_id)
               prep2.setDouble(6, pnlcalcrow.cumUrlzdPnL)
+              prep2.setDouble(7, pnlcalcrow.cumSgndVol * price)
               prep2.addBatch
             }
             else {
@@ -809,9 +822,10 @@ object DBProcessor {
               prep3.setDouble(2, pnlcalcrow.avgPx)
               prep3.setString(3, SUtil.convertDateTimeToStr(dtToUse))
               prep3.setDouble(4, pnlcalcrow.cumUrlzdPnL)
+              prep3.setDouble(5, pnlcalcrow.cumSgndVol * price)
 
-              prep3.setString(5, strategy_id)
-              prep3.setString(6, symbol)
+              prep3.setString(6, strategy_id)
+              prep3.setString(7, symbol)
               prep3.addBatch
             }
 
@@ -882,7 +896,7 @@ object DBProcessor {
     results.toList
   }
 
-  def updateOrInsertTradingAccountTbl() {
+  def updateOrInsertTradingAccountTbl(mapStyRlzdPnL: Map[String, Double]) {
 
     //--------------------------------------------------
     // calculate available cash
@@ -915,11 +929,12 @@ object DBProcessor {
 
             val cnt = if (rs.next) rs.getInt("cnt") else 0
 
+            val styRlzdPnL = mapStyRlzdPnL.get(strategy_id).getOrElse(0.0)
             if (cnt == 0) {
               //--------------------------------------------------
               // insert
               //--------------------------------------------------
-              prep2.setDouble(1, Config.initCapital.get(strategy_id).getOrElse(0.0))
+              prep2.setDouble(1, Config.initCapital.get(strategy_id).getOrElse(0.0) + styRlzdPnL)
               prep2.setDouble(2, Config.initCapital.get(strategy_id).getOrElse(0.0) - cashflow)
               prep2.setDouble(3, Config.initCapital.get(strategy_id).getOrElse(0.0) - cashflow)
               prep2.setString(4, dtSqlStr)
@@ -931,7 +946,7 @@ object DBProcessor {
               //--------------------------------------------------
               // update
               //--------------------------------------------------
-              prep3.setDouble(1, Config.initCapital.get(strategy_id).getOrElse(0.0))
+              prep3.setDouble(1, Config.initCapital.get(strategy_id).getOrElse(0.0) + styRlzdPnL)
               prep3.setDouble(2, Config.initCapital.get(strategy_id).getOrElse(0.0) - cashflow)
               prep3.setDouble(3, Config.initCapital.get(strategy_id).getOrElse(0.0) - cashflow)
               prep3.setString(4, dtSqlStr)

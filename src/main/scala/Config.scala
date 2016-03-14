@@ -41,8 +41,6 @@ object Config {
 
       onlyCalcPnLDuringTradingHr = prop.getProperty("onlyCalcPnLDuringTradingHr").toBoolean
 
-      availableCashUpdateIntvlInSec = prop.getProperty("availableCashUpdateIntvlInSec").toInt
-
       //--------------------------------------------------
       styIDToMaintainTradingAccount = prop.getProperty("styIDToMaintainTradingAccount").split(",").toList
       styIDToMaintainTradingAccount.foreach(s => {
@@ -84,7 +82,6 @@ object Config {
   // initial capital
   //--------------------------------------------------
   var initCapital = Map[String, Double]()
-  var availableCashUpdateIntvlInSec = 5
   var styIDToMaintainTradingAccount = List[String]()
 
   //--------------------------------------------------
