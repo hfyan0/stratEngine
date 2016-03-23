@@ -103,4 +103,9 @@ object Config {
   var MDPersistIntervalInSec = 300
   var CongestionThresholdInSec = 10
 
+//--------------------------------------------------
+// print market data for stock
+//--------------------------------------------------
+val symbolToPrintMD = "00941"
+
 }

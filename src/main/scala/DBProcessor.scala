@@ -934,9 +934,9 @@ object DBProcessor {
               //--------------------------------------------------
               // insert
               //--------------------------------------------------
-              prep2.setDouble(1, Config.initCapital.get(strategy_id).getOrElse(0.0) + styRlzdPnL)
-              prep2.setDouble(2, Config.initCapital.get(strategy_id).getOrElse(0.0) - cashflow)
-              prep2.setDouble(3, Config.initCapital.get(strategy_id).getOrElse(0.0) - cashflow)
+              prep2.setDouble(1, Config.initCapital.get(strategy_id).getOrElse(0.0) - cashflow) // cash
+              prep2.setDouble(2, Config.initCapital.get(strategy_id).getOrElse(0.0) - cashflow) // avail_cash
+              prep2.setDouble(3, 0) // holding_cash
               prep2.setString(4, dtSqlStr)
               prep2.setString(5, strategy_id)
               prep2.executeUpdate
@@ -946,9 +946,9 @@ object DBProcessor {
               //--------------------------------------------------
               // update
               //--------------------------------------------------
-              prep3.setDouble(1, Config.initCapital.get(strategy_id).getOrElse(0.0) + styRlzdPnL)
-              prep3.setDouble(2, Config.initCapital.get(strategy_id).getOrElse(0.0) - cashflow)
-              prep3.setDouble(3, Config.initCapital.get(strategy_id).getOrElse(0.0) - cashflow)
+              prep3.setDouble(1, Config.initCapital.get(strategy_id).getOrElse(0.0) - cashflow) // cash
+              prep3.setDouble(2, Config.initCapital.get(strategy_id).getOrElse(0.0) - cashflow) // avail_cash
+              prep3.setDouble(3, 0) // holding_cash
               prep3.setString(4, dtSqlStr)
               prep3.setString(5, strategy_id)
               prep3.executeUpdate

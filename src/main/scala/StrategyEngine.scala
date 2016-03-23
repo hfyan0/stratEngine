@@ -152,7 +152,11 @@ object StrategyEngine {
           val (parseRes, mfnominal) = SUtil.parseMarketFeedNominal(recvdStr)
           if (parseRes) {
             val (bIsMFValid, mfnominal) = SUtil.parseMarketFeedNominal(recvdStr)
-            if (bIsMFValid) mdInMemory += mfnominal.symbol -> (mfnominal.datetime, mfnominal.nominal_price)
+            if (bIsMFValid) {
+              mdInMemory += mfnominal.symbol -> (mfnominal.datetime, mfnominal.nominal_price)
+              if (mfnominal.symbol == Config.symbolToPrintMD)
+                println(mfnominal.symbol + ": " + mfnominal.nominal_price)
+            }
 
             // DBProcessor.insertMarketDataToItrdTbl(recvdStr)
             // //--------------------------------------------------
