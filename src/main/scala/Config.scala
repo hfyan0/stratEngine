@@ -40,6 +40,7 @@ object Config {
       mtmTime = new LocalTime(timeForDailyPnLCalnHHMM / 100, timeForDailyPnLCalnHHMM % 100)
 
       onlyCalcPnLDuringTradingHr = prop.getProperty("onlyCalcPnLDuringTradingHr").toBoolean
+      doPriceInitialization = prop.getProperty("doPriceInitialization").toBoolean
 
       //--------------------------------------------------
       styIDToMaintainTradingAccount = prop.getProperty("styIDToMaintainTradingAccount").split(",").toList
@@ -103,9 +104,12 @@ object Config {
   var MDPersistIntervalInSec = 300
   var CongestionThresholdInSec = 10
 
-//--------------------------------------------------
-// print market data for stock
-//--------------------------------------------------
-val symbolToPrintMD = "00941"
+  //--------------------------------------------------
+  // print market data for stock
+  //--------------------------------------------------
+  val symbolToPrintMD = "00941"
+
+  //--------------------------------------------------
+  var doPriceInitialization: Boolean = true
 
 }

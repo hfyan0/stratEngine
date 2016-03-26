@@ -127,10 +127,16 @@ object StrategyEngine {
     //--------------------------------------------------
     // initialize with prices from database
     //--------------------------------------------------
-    println(SUtil.getCurrentDateTime(HongKong()) + ": starting initialization")
-    val mdFromDB = DBProcessor.getNominalPricesFromDBAsAt(SUtil.getCurrentDateTime(HongKong()))
+    println("starting initialization: " + SUtil.getCurrentDateTime(HongKong()))
+    val mdFromDB = {
+      if (Config.doPriceInitialization)
+        DBProcessor.getNominalPricesFromDBAsAtAllStock(SUtil.getCurrentDateTime(HongKong()))
+      else
+        List[(String, DateTime, Double)]()
+    }
+
     var mdInMemory = Map[String, (DateTime, Double)]()
-    println(SUtil.getCurrentDateTime(HongKong()) + ": finished initialization")
+    println("finished initialization: " + SUtil.getCurrentDateTime(HongKong()))
 
     //--------------------------------------------------
     val thdMDHandler = new Thread(new Runnable {
@@ -187,6 +193,7 @@ object StrategyEngine {
         while (true) {
           val curHKTime = SUtil.getCurrentDateTime(HongKong())
           if (pt.checkIfItIsTimeToWakeUp(curHKTime)) {
+            println("thdWriteMDToDB: " + curHKTime)
             DBProcessor.insertMarketDataToItrdTbl(mdInMemory.toList)
           }
           else {
@@ -198,7 +205,7 @@ object StrategyEngine {
       }
     })
 
-    val thdTFHandler = new Thread(new Runnable {
+    val thdSFTFHandler = new Thread(new Runnable {
 
       def run() {
 
@@ -212,8 +219,14 @@ object StrategyEngine {
           val request = socket.recv(0)
 
           val recvdStr = new String(request, 0, request.length)
-          println("Received TF: [" + recvdStr + "]")
-          DBProcessor.insertTradeFeedToDB(recvdStr)
+          println("Received SF/TF: [" + recvdStr + "]")
+
+          val csv = recvdStr.split(",").toList
+
+          if (csv(1) == "signalfeed")
+            DBProcessor.insertSignalFeedToDB(recvdStr)
+          else if (csv(1) == "tradefeed")
+            DBProcessor.insertTradeFeedToDB(recvdStr)
 
           // //--------------------------------------------------
           // // send ack through zmq
@@ -238,7 +251,9 @@ object StrategyEngine {
         while (true) {
           val curHKTime = SUtil.getCurrentDateTime(HongKong())
 
-          if (pt.checkIfItIsTimeToWakeUp(curHKTime) && (!Config.onlyCalcPnLDuringTradingHr || TradingHours.isTradingHour("HKSTK", curHKTime))) {
+          if (pt.checkIfItIsTimeToWakeUp(curHKTime) &&
+            (!Config.onlyCalcPnLDuringTradingHr || TradingHours.isTradingHour("HKSTK", curHKTime))) {
+            println("thdPnLCalculator: " + curHKTime)
             //--------------------------------------------------
             // continuously calculate the latest intraday PnL
             // then insert into PnL table and portfolio table
@@ -260,8 +275,13 @@ object StrategyEngine {
             }.toMap
             DBProcessor.updateOrInsertTradingAccountTbl(mapStyRlzdPnL)
             //--------------------------------------------------
+          }
+          else if (pt.checkIfItIsTimeToWakeUp(curHKTime) &&
+            SUtil.getCurrentDateTime(HongKong()).getMillis >
+            SUtil.getCurrentDateTime(HongKong()).withTime(16, 15, 0, 0).getMillis) {
 
             //--------------------------------------------------
+            // we don't want to do this calculation during trading hour
             // check whether daily PnL should be updated
             // should update for all days up till today
             // then insert into PnL table and portfolio table
@@ -280,9 +300,15 @@ object StrategyEngine {
                 SUtil.getListOfDatesWithinRange(dt_last_daily_pnl.get.plusDays(1).toLocalDate(), uptoLD, Config.mtmTime)
             }
 
-            lsDateTimesInRange.foreach(dtInRng =>
-              DBProcessor.insertPnLCalcRowToDailyPnLTbl(Some(dtInRng), calcMtmPnL(dtInRng, Map[String, (DateTime, Double)](), DBProcessor.getNominalPricesFromDBAsAt(dtInRng))))
-
+            println("thdPnLCalculator: lsDateTimesInRange = " + lsDateTimesInRange)
+            println("check point 1: " + curHKTime)
+            lsDateTimesInRange.foreach(dtInRng => {
+              println("check point 2: dtInRng: " + dtInRng)
+              val mdFromDB_dtInRng = DBProcessor.getNominalPricesFromDBAsAtAllStock(dtInRng)
+              println("check point 3: " + curHKTime)
+              DBProcessor.insertPnLCalcRowToDailyPnLTbl(Some(dtInRng), calcMtmPnL(dtInRng, Map[String, (DateTime, Double)](), mdFromDB_dtInRng))
+            })
+            println("check point 4: " + curHKTime)
           }
           else {
             lastNoCongestionTime = curHKTime
@@ -300,7 +326,9 @@ object StrategyEngine {
       def run() {
 
         while (true) {
-          val dtcutoff = SUtil.getCurrentDateTime(HongKong()).minusDays(2)
+          val curHKTime = SUtil.getCurrentDateTime(HongKong())
+          println("thdCleanData: " + curHKTime)
+          val dtcutoff = curHKTime.minusDays(2)
           DBProcessor.cleanMarketDataInItrdTbl(dtcutoff)
           DBProcessor.cleanItrdPnLTbl(dtcutoff)
 
@@ -312,7 +340,7 @@ object StrategyEngine {
     })
 
     //--------------------------------------------------
-    thdTFHandler.start
+    thdSFTFHandler.start
     thdMDHandler.start
     thdWriteMDToDB.start
     thdPnLCalculator.start

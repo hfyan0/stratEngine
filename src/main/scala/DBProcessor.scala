@@ -105,45 +105,50 @@ object DBProcessor {
     })
   }
 
+  def insertSignalFeedToDB(sSignalFeed: String) {
+    lsConn.foreach(_conn => {
+      try {
+        val (bIsSFValid, csvFields) = SUtil.parseAugmentedSignalFeed(sSignalFeed)
+        if (bIsSFValid) {
+          //--------------------------------------------------
+          // signals table
+          //--------------------------------------------------
+          val ts = SUtil.convertTimestampFmt1(csvFields(0))
+          val prep = _conn.prepareStatement("insert into signals (status,timestamp,instrument_id,buy_sell,price,volume,comment,strategy_id,update_timestamp,signal_timestamp) values (?,?,?,?,?,?,?,?,?,?) ")
+          prep.setInt(1, 0) // states
+          prep.setString(2, ts) //timestamp
+          prep.setString(3, csvFields(3).toString) // instrument_id
+          prep.setDouble(4, csvFields(7).toDouble) // buy_sell
+          prep.setDouble(5, csvFields(5).toDouble) // price
+          prep.setDouble(6, csvFields(6).toDouble) // volume
+          prep.setString(7, csvFields(4)) // comment
+          prep.setString(8, csvFields(9)) // strategy_id
+          prep.setString(9, ts) // update_timestamp
+          prep.setString(10, ts) // signal_timestamp
+          prep.executeUpdate
+          _conn.commit
+        }
+      }
+    })
+  }
   def insertTradeFeedToDB(sTradeFeed: String) {
     lsConn.foreach(_conn => {
       try {
         val (bIsTFValid, csvFields) = SUtil.parseAugmentedTradeFeed(sTradeFeed)
         if (bIsTFValid) {
-          {
-            //--------------------------------------------------
-            // trades table
-            //--------------------------------------------------
-            val prep = _conn.prepareStatement("insert into trades (timestamp,instrument_id,trade_volume,trade_price,buy_sell,order_id,strategy_id) values (?,?,?,?,?,?,?) ")
-            prep.setString(1, SUtil.convertTimestampFmt1(csvFields(0))) // timestamp
-            prep.setString(2, csvFields(3).toString) // instrument_id
-            prep.setDouble(3, csvFields(6).toDouble) // trade_volume
-            prep.setDouble(4, csvFields(5).toDouble) // trade_price
-            prep.setDouble(5, csvFields(7).toDouble) // buy_sell
-            prep.setInt(6, csvFields(9).toInt) // order_id
-            prep.setString(7, csvFields(10)) // strategy_id
-            prep.executeUpdate
-            // _conn.commit
-          }
-          {
-            //--------------------------------------------------
-            // signals table
-            //--------------------------------------------------
-            val ts = SUtil.convertTimestampFmt1(csvFields(0))
-            val prep = _conn.prepareStatement("insert into signals (status,timestamp,instrument_id,buy_sell,price,volume,comment,strategy_id,update_timestamp,signal_timestamp) values (?,?,?,?,?,?,?,?,?,?) ")
-            prep.setInt(1, 0) // states
-            prep.setString(2, ts) //timestamp
-            prep.setString(3, csvFields(3).toString) // instrument_id
-            prep.setDouble(4, csvFields(7).toDouble) // buy_sell
-            prep.setDouble(5, csvFields(5).toDouble) // price
-            prep.setDouble(6, csvFields(6).toDouble) // volume
-            prep.setString(7, csvFields(4)) // comment
-            prep.setString(8, csvFields(10)) // strategy_id
-            prep.setString(9, ts) // update_timestamp
-            prep.setString(10, ts) // signal_timestamp
-            prep.executeUpdate
-            _conn.commit
-          }
+          //--------------------------------------------------
+          // trades table
+          //--------------------------------------------------
+          val prep = _conn.prepareStatement("insert into trades (timestamp,instrument_id,trade_volume,trade_price,buy_sell,order_id,strategy_id) values (?,?,?,?,?,?,?) ")
+          prep.setString(1, SUtil.convertTimestampFmt1(csvFields(0))) // timestamp
+          prep.setString(2, csvFields(3).toString) // instrument_id
+          prep.setDouble(3, csvFields(6).toDouble) // trade_volume
+          prep.setDouble(4, csvFields(5).toDouble) // trade_price
+          prep.setDouble(5, csvFields(7).toDouble) // buy_sell
+          prep.setInt(6, csvFields(9).toInt) // order_id
+          prep.setString(7, csvFields(10)) // strategy_id
+          prep.executeUpdate
+          _conn.commit
         }
       }
     })
@@ -308,7 +313,7 @@ object DBProcessor {
     res_map
   }
 
-  def getNominalPricesFromDBAsAt(asOfDate: DateTime): List[(String, DateTime, Double)] = {
+  def getNominalPricesFromDBAsAtAllStock(asOfDate: DateTime): List[(String, DateTime, Double)] = {
     val _conn = lsConn.head
 
     var symbols = List[String]()
@@ -336,26 +341,26 @@ object DBProcessor {
 
     symbols.foreach { symbol =>
       {
-        //--------------------------------------------------
-        // from intraday table
-        //--------------------------------------------------
-        try {
-          val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
-
-          val prep = _conn.prepareStatement("select timestamp,instrument_id,nominal_price from market_data_intraday where timestamp <= ? and instrument_id = ? order by timestamp desc limit 2")
-          prep.setString(1, asOfDateStr)
-          prep.setString(2, symbol)
-          val rs = prep.executeQuery()
-
-          while (rs.next) {
-
-            val symbol = rs.getString("instrument_id")
-            val datetime = SUtil.convertMySQLTSToDateTime(rs.getString("timestamp"))
-            val nominal_price = rs.getDouble("nominal_price")
-
-            results ::= (symbol, datetime, nominal_price)
-          }
-        }
+        // //--------------------------------------------------
+        // // from intraday table
+        // //--------------------------------------------------
+        // try {
+        //   val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
+        //
+        //   val prep = _conn.prepareStatement("select timestamp,instrument_id,nominal_price from market_data_intraday where timestamp <= ? and instrument_id = ? order by timestamp desc limit 2")
+        //   prep.setString(1, asOfDateStr)
+        //   prep.setString(2, symbol)
+        //   val rs = prep.executeQuery()
+        //
+        //   while (rs.next) {
+        //
+        //     val symbol = rs.getString("instrument_id")
+        //     val datetime = SUtil.convertMySQLTSToDateTime(rs.getString("timestamp"))
+        //     val nominal_price = rs.getDouble("nominal_price")
+        //
+        //     results ::= (symbol, datetime, nominal_price)
+        //   }
+        // }
         // //--------------------------------------------------
         // // from hourly table
         // //--------------------------------------------------
@@ -796,14 +801,13 @@ object DBProcessor {
 
             prep1.setString(1, strategy_id)
             prep1.setString(2, symbol)
+            val rs1 = prep1.executeQuery
 
-            val rs = prep1.executeQuery
+            val cnt = if (rs1.next) rs1.getInt("cnt") else 0
 
-            val cnt = if (rs.next) rs.getInt("cnt") else 0
-
-            if (cnt == 0) {
+            if (cnt == 0 && pnlcalcrow.cumSgndVol != 0) {
               //--------------------------------------------------
-              // insert
+              // insert only if volume isn't 0
               //--------------------------------------------------
               prep2.setString(1, symbol)
               prep2.setDouble(2, pnlcalcrow.cumSgndVol)
