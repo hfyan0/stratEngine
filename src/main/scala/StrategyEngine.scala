@@ -10,8 +10,8 @@ import org.joda.time.{Period, DateTime, Duration, LocalTime, Minutes}
 
 object StrategyEngine {
 
-  def calcMtmPnL(asOfDate: DateTime, mdinmemory: Map[String, (DateTime, Double)], mdfromdb: List[(String, DateTime, Double)]): List[(String, String, PnLCalcRow)] = {
-    var return_list = List[(String, String, PnLCalcRow)]()
+  def calcMtmPnL(asOfDate: DateTime, mdinmemory: Map[String, (DateTime, Double)], mdfromdb: List[(String, DateTime, Double)]): List[(Int, String, PnLCalcRow)] = {
+    var return_list = List[(Int, String, PnLCalcRow)]()
 
     val allSty = DBProcessor.getAllStyFromTradesTable
     val mapStySymTF = {
@@ -251,7 +251,9 @@ object StrategyEngine {
         while (true) {
           val curHKTime = SUtil.getCurrentDateTime(HongKong())
 
-          if (pt.checkIfItIsTimeToWakeUp(curHKTime) &&
+          val wakeUp: Boolean = pt.checkIfItIsTimeToWakeUp(curHKTime)
+
+          if (wakeUp &&
             (!Config.onlyCalcPnLDuringTradingHr || TradingHours.isTradingHour("HKSTK", curHKTime))) {
             println("thdPnLCalculator: " + curHKTime)
             //--------------------------------------------------
@@ -276,9 +278,9 @@ object StrategyEngine {
             DBProcessor.updateOrInsertTradingAccountTbl(mapStyRlzdPnL)
             //--------------------------------------------------
           }
-          else if (pt.checkIfItIsTimeToWakeUp(curHKTime) &&
+          else if (wakeUp &&
             SUtil.getCurrentDateTime(HongKong()).getMillis >
-            SUtil.getCurrentDateTime(HongKong()).withTime(16, 15, 0, 0).getMillis) {
+            SUtil.getCurrentDateTime(HongKong()).withTime(Config.timeForDailyPnLCalnHHMM / 100, Config.timeForDailyPnLCalnHHMM % 100, 0, 0).getMillis) {
 
             //--------------------------------------------------
             // we don't want to do this calculation during trading hour
@@ -292,7 +294,7 @@ object StrategyEngine {
             val minFromMTM = Minutes.minutesBetween(curLT, Config.mtmTime).getMinutes()
 
             val lsDateTimesInRange = {
-              val uptoLD = { if (minFromMTM > 0) curLD.minusDays(1) else curLD }
+              val uptoLD = { if (0 > minFromMTM) curLD else curLD.minusDays(1) } // if time has not passed mtmTime, don't calculate today's PnL
 
               if (dt_last_daily_pnl == None)
                 SUtil.getListOfDatesWithinRange(Config.ldStartCalcPnL, uptoLD, Config.mtmTime)
@@ -301,14 +303,12 @@ object StrategyEngine {
             }
 
             println("thdPnLCalculator: lsDateTimesInRange = " + lsDateTimesInRange)
-            println("check point 1: " + curHKTime)
             lsDateTimesInRange.foreach(dtInRng => {
-              println("check point 2: dtInRng: " + dtInRng)
+              println("dtInRng: " + dtInRng)
               val mdFromDB_dtInRng = DBProcessor.getNominalPricesFromDBAsAtAllStock(dtInRng)
-              println("check point 3: " + curHKTime)
+              println("Current time: " + curHKTime)
               DBProcessor.insertPnLCalcRowToDailyPnLTbl(Some(dtInRng), calcMtmPnL(dtInRng, Map[String, (DateTime, Double)](), mdFromDB_dtInRng))
             })
-            println("check point 4: " + curHKTime)
           }
           else {
             lastNoCongestionTime = curHKTime

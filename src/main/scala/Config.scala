@@ -26,15 +26,15 @@ object Config {
       zmqTFConnStr = prop.getProperty("zmqTFConnStr")
       pnlCalcIntvlInSec = Option(prop.getProperty("pnlCalcIntvlInSec")) match {
         case Some(s: String) => s.toInt
-        case None            => 300
+        case None         => 300
       }
       itrdMktDataUpdateIntvlInSec = Option(prop.getProperty("itrdMktDataUpdateIntvlInSec")) match {
         case Some(s: String) => s.toInt
-        case None            => 300
+        case None         => 300
       }
       timeForDailyPnLCalnHHMM = Option(prop.getProperty("timeForDailyPnLCalnHHMM")) match {
         case Some(s: String) => s.toInt
-        case None            => 1602
+        case None         => 1615
       }
 
       mtmTime = new LocalTime(timeForDailyPnLCalnHHMM / 100, timeForDailyPnLCalnHHMM % 100)
@@ -43,7 +43,7 @@ object Config {
       doPriceInitialization = prop.getProperty("doPriceInitialization").toBoolean
 
       //--------------------------------------------------
-      styIDToMaintainTradingAccount = prop.getProperty("styIDToMaintainTradingAccount").split(",").toList
+      styIDToMaintainTradingAccount = prop.getProperty("styIDToMaintainTradingAccount").split(",").toList.map(_.toInt)
       styIDToMaintainTradingAccount.foreach(s => {
         initCapital += s -> prop.getProperty("initCapital_" + s).toDouble
       })
@@ -74,7 +74,7 @@ object Config {
   //--------------------------------------------------
   var pnlCalcIntvlInSec = 300
   var itrdMktDataUpdateIntvlInSec = 300
-  var timeForDailyPnLCalnHHMM = 1602
+  var timeForDailyPnLCalnHHMM = 1615
   var mtmTime: LocalTime = new LocalTime(0, 0)
   var ldStartCalcPnL: LocalDate = new LocalDate(2016, 1, 1)
   var onlyCalcPnLDuringTradingHr: Boolean = true
@@ -82,8 +82,8 @@ object Config {
   //--------------------------------------------------
   // initial capital
   //--------------------------------------------------
-  var initCapital = Map[String, Double]()
-  var styIDToMaintainTradingAccount = List[String]()
+  var initCapital = Map[Int, Double]()
+  var styIDToMaintainTradingAccount = List[Int]()
 
   //--------------------------------------------------
   // JDBC

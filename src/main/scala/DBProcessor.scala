@@ -22,6 +22,24 @@ object DBProcessor {
     lsConn ::= _conn
   })
 
+  def getStratIDFromMotherStrategy(ms: String): List[Int] = {
+    val _conn = lsConn.head
+
+    val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
+
+    var stratid = List[Int]()
+
+    val prep = _conn.prepareStatement("select strategy_id from strategy_info where mother_strategy=?")
+    prep.setString(1, ms)
+    val rs = prep.executeQuery()
+
+    while (rs.next) {
+      stratid = stratid :+ rs.getInt("strategy_id")
+    }
+
+    stratid
+  }
+
   def deleteSignalsTable() {
     lsConn.foreach(_conn => {
       try {
@@ -74,14 +92,15 @@ object DBProcessor {
     })
   }
 
-  def deletePortfolioTable(lsStySymPnLRow: List[(String, String, PnLCalcRow)]) {
+  def deletePortfolioTable(lsStySymPnLRow: List[(Int, String, PnLCalcRow)]) {
     lsConn.foreach(_conn => {
       try {
         val prep = _conn.prepareStatement("delete from portfolios where strategy_id = ? and instrument_id = ?")
 
         lsStySymPnLRow.foreach {
           case (stratid, symbol, pnlcalcrow) => {
-            prep.setString(1, stratid)
+            // prep.setString(1, stratid)
+            prep.setInt(1, stratid)
             prep.setString(2, symbol)
             prep.addBatch
           }
@@ -93,11 +112,12 @@ object DBProcessor {
     })
   }
 
-  def deletePortfolioTableWithStratIDSym(stratid: String, symbol: String) {
+  def deletePortfolioTableWithStratIDSym(stratid: Int, symbol: String) {
     lsConn.foreach(_conn => {
       try {
         val prep = _conn.prepareStatement("delete from portfolios where strategy_id = ? and instrument_id = ?")
-        prep.setString(1, stratid)
+        // prep.setString(1, stratid)
+        prep.setInt(1, stratid)
         prep.setString(2, symbol)
         prep.executeUpdate
         _conn.commit
@@ -113,19 +133,23 @@ object DBProcessor {
           //--------------------------------------------------
           // signals table
           //--------------------------------------------------
-          val ts = SUtil.convertTimestampFmt1(csvFields(0))
           val prep = _conn.prepareStatement("insert into signals (status,timestamp,instrument_id,buy_sell,price,volume,comment,strategy_id,update_timestamp,signal_timestamp) values (?,?,?,?,?,?,?,?,?,?) ")
-          prep.setInt(1, 0) // states
-          prep.setString(2, ts) //timestamp
-          prep.setString(3, csvFields(3).toString) // instrument_id
-          prep.setDouble(4, csvFields(7).toDouble) // buy_sell
-          prep.setDouble(5, csvFields(5).toDouble) // price
-          prep.setDouble(6, csvFields(6).toDouble) // volume
-          prep.setString(7, csvFields(4)) // comment
-          prep.setString(8, csvFields(9)) // strategy_id
-          prep.setString(9, ts) // update_timestamp
-          prep.setString(10, ts) // signal_timestamp
-          prep.executeUpdate
+          getStratIDFromMotherStrategy(csvFields(9)).foreach(sid => {
+            val ts = SUtil.convertTimestampFmt1(csvFields(0))
+            prep.setInt(1, 0) // states
+            prep.setString(2, ts) //timestamp
+            prep.setString(3, csvFields(3).toString) // instrument_id
+            prep.setDouble(4, csvFields(7).toDouble) // buy_sell
+            prep.setDouble(5, csvFields(5).toDouble) // price
+            prep.setDouble(6, csvFields(6).toDouble) // volume
+            prep.setString(7, csvFields(4)) // comment
+            // prep.setString(8, sid) // strategy_id
+            prep.setInt(8, sid) // strategy_id
+            prep.setString(9, ts) // update_timestamp
+            prep.setString(10, ts) // signal_timestamp
+            prep.addBatch
+          })
+          prep.executeBatch
           _conn.commit
         }
       }
@@ -139,45 +163,22 @@ object DBProcessor {
           //--------------------------------------------------
           // trades table
           //--------------------------------------------------
-          val prep = _conn.prepareStatement("insert into trades (timestamp,instrument_id,trade_volume,trade_price,buy_sell,order_id,strategy_id) values (?,?,?,?,?,?,?) ")
-          prep.setString(1, SUtil.convertTimestampFmt1(csvFields(0))) // timestamp
-          prep.setString(2, csvFields(3).toString) // instrument_id
-          prep.setDouble(3, csvFields(6).toDouble) // trade_volume
-          prep.setDouble(4, csvFields(5).toDouble) // trade_price
-          prep.setDouble(5, csvFields(7).toDouble) // buy_sell
-          prep.setInt(6, csvFields(9).toInt) // order_id
-          prep.setString(7, csvFields(10)) // strategy_id
-          prep.executeUpdate
+          val prep = _conn.prepareStatement("insert into trades (timestamp,instrument_id,trade_volume,trade_price,buy_sell,order_id,strategy_id,type) values (?,?,?,?,?,?,?,?) ")
+          getStratIDFromMotherStrategy(csvFields(10)).foreach(sid => {
+            prep.setString(1, SUtil.convertTimestampFmt1(csvFields(0))) // timestamp
+            prep.setString(2, csvFields(3).toString) // instrument_id
+            prep.setDouble(3, csvFields(6).toDouble) // trade_volume
+            prep.setDouble(4, csvFields(5).toDouble) // trade_price
+            prep.setDouble(5, csvFields(7).toDouble) // buy_sell
+            prep.setInt(6, csvFields(9).toInt) // order_id
+            // prep.setString(7, sid) // strategy_id
+            prep.setInt(7, sid) // strategy_id
+            prep.setString(8, "N") // type
+            prep.addBatch
+          })
+          prep.executeBatch
           _conn.commit
         }
-      }
-    })
-  }
-
-  def batchInsertTradeFeedToDB(ltf: List[String]) {
-    lsConn.foreach(_conn => {
-      try {
-
-        val prep = _conn.prepareStatement("insert into trades (timestamp,instrument_id,trade_volume,trade_price,buy_sell,order_id,strategy_id) values (?,?,?,?,?,?,?) ")
-
-        ltf.foreach {
-          tf =>
-            val (bIsTFValid, csvFields) = SUtil.parseAugmentedTradeFeed(tf)
-            if (bIsTFValid) {
-              prep.setString(1, SUtil.convertTimestampFmt1(csvFields(0)))
-              prep.setString(2, csvFields(3).toString)
-              prep.setDouble(3, csvFields(6).toDouble)
-              prep.setDouble(4, csvFields(5).toDouble)
-              prep.setDouble(5, csvFields(7).toDouble)
-              prep.setInt(6, csvFields(9).toInt)
-              prep.setString(7, csvFields(10))
-              prep.addBatch()
-            }
-        }
-
-        prep.executeBatch
-        _conn.commit
-
       }
     })
   }
@@ -407,7 +408,7 @@ object DBProcessor {
     results
   }
 
-  def getSymFromPortfolioTbl(strategy_id: String): List[String] = {
+  def getSymFromPortfolioTbl(strategy_id: Int): List[String] = {
     val _conn = lsConn.head
 
     var results = List[String]()
@@ -416,7 +417,8 @@ object DBProcessor {
       val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
 
       val prep = _conn.prepareStatement("select distinct instrument_id from portfolios where strategy_id=?")
-      prep.setString(1, strategy_id)
+      // prep.setString(1, strategy_id)
+      prep.setInt(1, strategy_id)
       val rs = prep.executeQuery()
 
       while (rs.next) {
@@ -425,7 +427,7 @@ object DBProcessor {
     }
     results
   }
-  def getSymFromPortfolioTblWithZeroPos(strategy_id: String): List[String] = {
+  def getSymFromPortfolioTblWithZeroPos(strategy_id: Int): List[String] = {
     val _conn = lsConn.head
 
     var results = List[String]()
@@ -434,7 +436,8 @@ object DBProcessor {
       val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
 
       val prep = _conn.prepareStatement("select distinct instrument_id from portfolios where strategy_id=? and volume=0")
-      prep.setString(1, strategy_id)
+      // prep.setString(1, strategy_id)
+      prep.setInt(1, strategy_id)
       val rs = prep.executeQuery()
 
       while (rs.next) {
@@ -443,7 +446,7 @@ object DBProcessor {
     }
     results
   }
-  def getSymFromTradeTbl(strategy_id: String): List[String] = {
+  def getSymFromTradeTbl(strategy_id: Int): List[String] = {
     val _conn = lsConn.head
 
     var results = List[String]()
@@ -452,7 +455,8 @@ object DBProcessor {
       val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
 
       val prep = _conn.prepareStatement("select distinct instrument_id from trades where strategy_id=?")
-      prep.setString(1, strategy_id)
+      // prep.setString(1, strategy_id)
+      prep.setInt(1, strategy_id)
       val rs = prep.executeQuery()
 
       while (rs.next) {
@@ -461,7 +465,7 @@ object DBProcessor {
     }
     results
   }
-  def getTotalPnLOfSty(strategy_id: String): Double = {
+  def getTotalPnLOfSty(strategy_id: Int): Double = {
     val _conn = lsConn.head
 
     var results: Double = 0
@@ -470,7 +474,8 @@ object DBProcessor {
       val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
 
       val prep = _conn.prepareStatement("select sum(total_pnl) sum_total_pnl from intraday_pnl where strategy_id=?")
-      prep.setString(1, strategy_id)
+      // prep.setString(1, strategy_id)
+      prep.setInt(1, strategy_id)
       val rs = prep.executeQuery()
 
       while (rs.next) {
@@ -496,7 +501,7 @@ object DBProcessor {
     results
   }
 
-  def getLastPnLOfStySym(strategy_id: String, symbol: String): (Double, Double, Double) = {
+  def getLastPnLOfStySym(strategy_id: Int, symbol: String): (Double, Double, Double) = {
     val _conn = lsConn.head
 
     var rlzdPnL: Double = 0
@@ -507,7 +512,8 @@ object DBProcessor {
       val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
 
       val prep = _conn.prepareStatement("select realized_pnl,unrealized_pnl,total_pnl from intraday_pnl where strategy_id=? and instrument_id=? order by id desc limit 1")
-      prep.setString(1, strategy_id)
+      // prep.setString(1, strategy_id)
+      prep.setInt(1, strategy_id)
       prep.setString(2, symbol)
       val rs = prep.executeQuery()
 
@@ -520,10 +526,10 @@ object DBProcessor {
     (rlzdPnL, urlzdPnL, totalPnL)
   }
 
-  def getAllStyFromTradesTable(): List[String] = {
+  def getAllStyFromTradesTable(): List[Int] = {
     val _conn = lsConn.head
 
-    var results = ListBuffer[String]()
+    var results = ListBuffer[Int]()
 
     try {
       val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
@@ -531,13 +537,13 @@ object DBProcessor {
       val rs = statement.executeQuery("select distinct strategy_id from trades order by strategy_id")
 
       while (rs.next) {
-        results += rs.getString("strategy_id")
+        results += rs.getInt("strategy_id")
       }
     }
     results.toList
   }
 
-  def getAllTradesForSty(sty: String): List[TradeFeed] = {
+  def getAllTradesForSty(sty: Int): List[TradeFeed] = {
     val _conn = lsConn.head
 
     var results = ListBuffer[TradeFeed]()
@@ -546,7 +552,7 @@ object DBProcessor {
       val statement = _conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
 
       val prep = _conn.prepareStatement("select timestamp,instrument_id,trade_price,trade_volume,buy_sell from trades where strategy_id=? order by timestamp")
-      prep.setString(1, sty)
+      prep.setInt(1, sty)
       val rs = prep.executeQuery()
 
       while (rs.next) {
@@ -573,7 +579,7 @@ object DBProcessor {
     results.toList
   }
 
-  def insertPnLCalcRowToItrdPnLTbl(strategy_id: String, symbol: String, pnlcalcrow: PnLCalcRow) {
+  def insertPnLCalcRowToItrdPnLTbl(strategy_id: Int, symbol: String, pnlcalcrow: PnLCalcRow) {
     lsConn.foreach(_conn => {
       try {
         val prep = _conn.prepareStatement("insert into intraday_pnl (timestamp,instrument_id,realized_pnl,unrealized_pnl,total_pnl,position,strategy_id) values (?,?,?,?,?,?,?)")
@@ -584,14 +590,14 @@ object DBProcessor {
         prep.setDouble(4, pnlcalcrow.cumUrlzdPnL)
         prep.setDouble(5, pnlcalcrow.cumRlzdPnL + pnlcalcrow.cumUrlzdPnL)
         prep.setDouble(6, pnlcalcrow.cumSgndVol)
-        prep.setString(7, strategy_id)
+        prep.setInt(7, strategy_id)
         prep.executeUpdate
         _conn.commit
       }
     })
   }
 
-  def insertPnLCalcRowToItrdPnLTbl(lsStySymPnLRow: List[(String, String, PnLCalcRow)]) {
+  def insertPnLCalcRowToItrdPnLTbl(lsStySymPnLRow: List[(Int, String, PnLCalcRow)]) {
     val curSqlTime = SUtil.getCurrentSqlTimeStampStr(HongKong())
     lsConn.foreach(_conn => {
       try {
@@ -610,7 +616,7 @@ object DBProcessor {
             prep1.setDouble(4, pnlcalcrow.cumUrlzdPnL)
             prep1.setDouble(5, pnlcalcrow.cumRlzdPnL + pnlcalcrow.cumUrlzdPnL)
             prep1.setDouble(6, pnlcalcrow.cumSgndVol)
-            prep1.setString(7, strategy_id)
+            prep1.setInt(7, strategy_id)
             prep1.addBatch
           }
         }
@@ -653,7 +659,7 @@ object DBProcessor {
               prep2.setDouble(2, pnlcalcrow.cumRlzdPnL)
               prep2.setDouble(3, pnlcalcrow.cumUrlzdPnL)
               prep2.setDouble(4, pnlcalcrow.cumRlzdPnL + pnlcalcrow.cumUrlzdPnL)
-              prep2.setString(5, strategy_id)
+              prep2.setInt(5, strategy_id)
               prep2.addBatch
             }
         }
@@ -665,7 +671,7 @@ object DBProcessor {
     })
   }
 
-  def insertPnLCalcRowToDailyPnLTbl(dt: Option[DateTime], lsStySymPnLRow: List[(String, String, PnLCalcRow)]) {
+  def insertPnLCalcRowToDailyPnLTbl(dt: Option[DateTime], lsStySymPnLRow: List[(Int, String, PnLCalcRow)]) {
     lsConn.foreach(_conn => {
       try {
         val prep = _conn.prepareStatement("insert into daily_pnl (timestamp,instrument_id,realized_pnl,unrealized_pnl,position,strategy_id) values (?,?,?,?,?,?)")
@@ -682,7 +688,7 @@ object DBProcessor {
             prep.setDouble(3, pnlcalcrow.cumRlzdPnL)
             prep.setDouble(4, pnlcalcrow.cumUrlzdPnL)
             prep.setDouble(5, pnlcalcrow.cumSgndVol)
-            prep.setString(6, strategy_id)
+            prep.setInt(6, strategy_id)
             prep.addBatch
           }
         }
@@ -693,7 +699,7 @@ object DBProcessor {
     })
   }
 
-  def insertPnLCalcRowToDailyPnLTbl(dt: Option[DateTime], strategy_id: String, symbol: String, pnlcalcrow: PnLCalcRow) {
+  def insertPnLCalcRowToDailyPnLTbl(dt: Option[DateTime], strategy_id: Int, symbol: String, pnlcalcrow: PnLCalcRow) {
     lsConn.foreach(_conn => {
       try {
         val prep = _conn.prepareStatement("insert into daily_pnl (timestamp,instrument_id,realized_pnl,unrealized_pnl,position,strategy_id) values (?,?,?,?,?,?)")
@@ -708,14 +714,14 @@ object DBProcessor {
         prep.setDouble(3, pnlcalcrow.cumRlzdPnL)
         prep.setDouble(4, pnlcalcrow.cumUrlzdPnL)
         prep.setDouble(5, pnlcalcrow.cumSgndVol)
-        prep.setString(6, strategy_id)
+        prep.setInt(6, strategy_id)
         prep.executeUpdate
         _conn.commit
       }
     })
   }
 
-  def insertPortfolioTbl(dt: Option[DateTime], lsStySymPnLRow: List[(String, String, PnLCalcRow)]) {
+  def insertPortfolioTbl(dt: Option[DateTime], lsStySymPnLRow: List[(Int, String, PnLCalcRow)]) {
     lsConn.foreach(_conn => {
       try {
         val dtToUse = dt match {
@@ -731,7 +737,7 @@ object DBProcessor {
             prep.setDouble(2, pnlcalcrow.cumSgndVol)
             prep.setDouble(3, pnlcalcrow.avgPx)
             prep.setString(4, SUtil.convertDateTimeToStr(dtToUse))
-            prep.setString(5, strategy_id)
+            prep.setInt(5, strategy_id)
             prep.setDouble(6, pnlcalcrow.cumUrlzdPnL)
             prep.addBatch
           }
@@ -771,7 +777,7 @@ object DBProcessor {
     })
   }
 
-  def updateOrInsertPortfolioTbl(dt: Option[DateTime], lsStySymPnLRow: List[(String, String, PnLCalcRow)], mdinmemory: Map[String, (DateTime, Double)], mdfromdb: List[(String, DateTime, Double)]) {
+  def updateOrInsertPortfolioTbl(dt: Option[DateTime], lsStySymPnLRow: List[(Int, String, PnLCalcRow)], mdinmemory: Map[String, (DateTime, Double)], mdfromdb: List[(String, DateTime, Double)]) {
     lsConn.foreach(_conn => {
       try {
 
@@ -799,7 +805,7 @@ object DBProcessor {
               case _            => 0.0
             }
 
-            prep1.setString(1, strategy_id)
+            prep1.setInt(1, strategy_id)
             prep1.setString(2, symbol)
             val rs1 = prep1.executeQuery
 
@@ -813,7 +819,7 @@ object DBProcessor {
               prep2.setDouble(2, pnlcalcrow.cumSgndVol)
               prep2.setDouble(3, pnlcalcrow.avgPx)
               prep2.setString(4, SUtil.convertDateTimeToStr(dtToUse))
-              prep2.setString(5, strategy_id)
+              prep2.setInt(5, strategy_id)
               prep2.setDouble(6, pnlcalcrow.cumUrlzdPnL)
               prep2.setDouble(7, pnlcalcrow.cumSgndVol * price)
               prep2.addBatch
@@ -828,7 +834,7 @@ object DBProcessor {
               prep3.setDouble(4, pnlcalcrow.cumUrlzdPnL)
               prep3.setDouble(5, pnlcalcrow.cumSgndVol * price)
 
-              prep3.setString(6, strategy_id)
+              prep3.setInt(6, strategy_id)
               prep3.setString(7, symbol)
               prep3.addBatch
             }
@@ -843,7 +849,7 @@ object DBProcessor {
     })
   }
 
-  def insertPortfolioTbl(dt: Option[DateTime], strategy_id: String, symbol: String, signedPos: Double, avgPx: Double, cumUrlzdPnL: Double) {
+  def insertPortfolioTbl(dt: Option[DateTime], strategy_id: Int, symbol: String, signedPos: Double, avgPx: Double, cumUrlzdPnL: Double) {
     lsConn.foreach(_conn => {
       try {
         val prep = _conn.prepareStatement("insert into portfolios (instrument_id,volume,avg_price,timestamp,strategy_id,unrealized_pnl) values (?,?,?,?,?,?)")
@@ -856,7 +862,7 @@ object DBProcessor {
         prep.setDouble(2, signedPos)
         prep.setDouble(3, avgPx)
         prep.setString(4, SUtil.convertDateTimeToStr(dtToUse))
-        prep.setString(5, strategy_id)
+        prep.setInt(5, strategy_id)
         prep.setDouble(6, cumUrlzdPnL)
         prep.executeUpdate
         _conn.commit
@@ -900,7 +906,7 @@ object DBProcessor {
     results.toList
   }
 
-  def updateOrInsertTradingAccountTbl(mapStyRlzdPnL: Map[String, Double]) {
+  def updateOrInsertTradingAccountTbl(mapStyRlzdPnL: Map[Int, Double]) {
 
     //--------------------------------------------------
     // calculate available cash
@@ -927,7 +933,7 @@ object DBProcessor {
             val prep2 = _conn.prepareStatement("insert into trading_account (cash,avail_cash,holding_cash,timestamp,strategy_id) values (?,?,?,?,?)")
             val prep3 = _conn.prepareStatement("update trading_account set cash=?,avail_cash=?,holding_cash=?,timestamp=? where strategy_id=?")
 
-            prep1.setString(1, strategy_id)
+            prep1.setInt(1, strategy_id)
 
             val rs = prep1.executeQuery
 
@@ -942,7 +948,7 @@ object DBProcessor {
               prep2.setDouble(2, Config.initCapital.get(strategy_id).getOrElse(0.0) - cashflow) // avail_cash
               prep2.setDouble(3, 0) // holding_cash
               prep2.setString(4, dtSqlStr)
-              prep2.setString(5, strategy_id)
+              prep2.setInt(5, strategy_id)
               prep2.executeUpdate
               _conn.commit
             }
@@ -954,7 +960,7 @@ object DBProcessor {
               prep3.setDouble(2, Config.initCapital.get(strategy_id).getOrElse(0.0) - cashflow) // avail_cash
               prep3.setDouble(3, 0) // holding_cash
               prep3.setString(4, dtSqlStr)
-              prep3.setString(5, strategy_id)
+              prep3.setInt(5, strategy_id)
               prep3.executeUpdate
               _conn.commit
             }
