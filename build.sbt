@@ -4,7 +4,7 @@ import AssemblyKeys._
 name := "Scalable Strategy Engine"
 
 // orgnization name (e.g., the package name of the project)
-organization := "org.strategyengine"
+organization := "com.cash"
 
 version := "1.0-SNAPSHOT"
 
