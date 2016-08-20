@@ -340,11 +340,11 @@ object StrategyEngine {
     })
 
     //--------------------------------------------------
-    thdSFTFHandler.start
-    thdMDHandler.start
-    thdWriteMDToDB.start
-    thdPnLCalculator.start
-    thdCleanData.start
+    if (Config.thdSFTFHandlerIsOn) thdSFTFHandler.start
+    if (Config.thdMDHandlerIsOn) thdMDHandler.start
+    if (Config.thdWriteMDToDBIsOn) thdWriteMDToDB.start
+    if (Config.thdPnLCalculatorIsOn) thdPnLCalculator.start
+    if (Config.thdCleanDataIsOn) thdCleanData.start
 
     while (true) {
       Thread.sleep(10000);

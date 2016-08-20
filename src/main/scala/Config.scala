@@ -4,8 +4,10 @@ import java.io.FileInputStream;
 import java.util.Date;
 import java.util.Properties;
 import org.joda.time.{DateTime, LocalDate, LocalTime}
+import org.joda.time.format.DateTimeFormat
 
 object Config {
+  val dtf = DateTimeFormat.forPattern("yyyy-MM-dd")
 
   def readPropFile(propFileName: String) {
 
@@ -26,27 +28,36 @@ object Config {
       zmqTFConnStr = prop.getProperty("zmqTFConnStr")
       pnlCalcIntvlInSec = Option(prop.getProperty("pnlCalcIntvlInSec")) match {
         case Some(s: String) => s.toInt
-        case None         => 300
+        case None            => 300
       }
       itrdMktDataUpdateIntvlInSec = Option(prop.getProperty("itrdMktDataUpdateIntvlInSec")) match {
         case Some(s: String) => s.toInt
-        case None         => 300
+        case None            => 300
       }
       timeForDailyPnLCalnHHMM = Option(prop.getProperty("timeForDailyPnLCalnHHMM")) match {
         case Some(s: String) => s.toInt
-        case None         => 1615
+        case None            => 1615
       }
 
       mtmTime = new LocalTime(timeForDailyPnLCalnHHMM / 100, timeForDailyPnLCalnHHMM % 100)
 
       onlyCalcPnLDuringTradingHr = prop.getProperty("onlyCalcPnLDuringTradingHr").toBoolean
       doPriceInitialization = prop.getProperty("doPriceInitialization").toBoolean
+      ldStartCalcPnL = dtf.parseDateTime(prop.getProperty("DateStartCalcPnL")).toLocalDate
 
       //--------------------------------------------------
       styIDToMaintainTradingAccount = prop.getProperty("styIDToMaintainTradingAccount").split(",").toList.map(_.toInt)
       styIDToMaintainTradingAccount.foreach(s => {
         initCapital += s -> prop.getProperty("initCapital_" + s).toDouble
       })
+      //--------------------------------------------------
+
+      thdSFTFHandlerIsOn = prop.getProperty("thdSFTFHandlerIsOn").toBoolean
+      thdMDHandlerIsOn = prop.getProperty("thdMDHandlerIsOn").toBoolean
+      thdWriteMDToDBIsOn = prop.getProperty("thdWriteMDToDBIsOn").toBoolean
+      thdPnLCalculatorIsOn = prop.getProperty("thdPnLCalculatorIsOn").toBoolean
+      thdCleanDataIsOn = prop.getProperty("thdCleanDataIsOn").toBoolean
+
       //--------------------------------------------------
 
       println(jdbcConnStr)
@@ -111,5 +122,14 @@ object Config {
 
   //--------------------------------------------------
   var doPriceInitialization: Boolean = true
+
+  //--------------------------------------------------
+  // thread on / off
+  //--------------------------------------------------
+  var thdSFTFHandlerIsOn = true
+  var thdMDHandlerIsOn = true
+  var thdWriteMDToDBIsOn = true
+  var thdPnLCalculatorIsOn = true
+  var thdCleanDataIsOn = true
 
 }

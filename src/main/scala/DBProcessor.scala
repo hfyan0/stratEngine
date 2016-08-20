@@ -136,7 +136,7 @@ object DBProcessor {
           val prep = _conn.prepareStatement("insert into signals (status,timestamp,instrument_id,buy_sell,price,volume,comment,strategy_id,update_timestamp,signal_timestamp) values (?,?,?,?,?,?,?,?,?,?) ")
           getStratIDFromMotherStrategy(csvFields(9)).foreach(sid => {
             val ts = SUtil.convertTimestampFmt1(csvFields(0))
-            prep.setInt(1, 0) // states
+            prep.setInt(1, 2) // states
             prep.setString(2, ts) //timestamp
             prep.setString(3, csvFields(3).toString) // instrument_id
             prep.setDouble(4, csvFields(7).toDouble) // buy_sell
